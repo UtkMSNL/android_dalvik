@@ -380,7 +380,16 @@ GOTO_TARGET(invokeStatic, bool methodCallRange)
 
     methodToCall = dvmDexGetResolvedMethod(methodClassDex, ref);
     if (methodToCall == NULL) {
+#ifdef CHECK_STACK_INTEGRITY_DO
+        /* Only when we resolve static methods might we have to initialize the
+         * base class.  Otherwise having a ref to 'this' ensures it is
+         * initialized already. */
+        CHECK_STACK_INTEGRITY_DO(
+          methodToCall = dvmResolveMethod(curMethod->clazz, ref, METHOD_STATIC)
+        );
+#else
         methodToCall = dvmResolveMethod(curMethod->clazz, ref, METHOD_STATIC);
+#endif
         if (methodToCall == NULL) {
             ILOGV("+ unknown method");
             GOTO_exceptionThrown();
@@ -562,6 +571,12 @@ GOTO_TARGET(returnFromMethod)
         if (dvmIsBreakFrame(fp)) {
             /* bail without popping the method frame from stack */
             LOGVV("+++ returned into break frame");
+
+#ifdef WITH_OFFLOAD
+            /* Export pc on the old frame. */
+            saveArea->xtra.currentPc = pc;
+#endif
+
             GOTO_bail();
         }
 
@@ -575,6 +590,9 @@ GOTO_TARGET(returnFromMethod)
         ILOGD("> (return to %s.%s %s)", curMethod->clazz->descriptor,
             curMethod->name, curMethod->shorty);
 
+#ifdef WITH_OFFLOAD
+        offStackFramePopped(self);
+#endif
         /* use FINISH on the caller's invoke instruction */
         //u2 invokeInstr = INST_INST(FETCH(0));
         if (true /*invokeInstr >= OP_INVOKE_VIRTUAL &&
@@ -838,6 +856,23 @@ GOTO_TARGET(invokeMethod, bool methodCallRange, const Method* _methodToCall,
         newFp = (u4*) SAVEAREA_FROM_FP(fp) - methodToCall->registersSize;
         newSaveArea = SAVEAREA_FROM_FP(newFp);
 
+#if defined(WITH_OFFLOAD) && defined(CHECK_FOR_MIGRATE)
+        if (gDvm.isServer && !gDvm.initializing &&
+              dvmIsNativeMethod(methodToCall) &&
+              (~methodToCall->accessFlags & ACC_OFFLOADABLE)) {
+            self->offFlagMigration = true;
+            CHECK_FOR_MIGRATE();
+            dvmAbort();
+        } else if(gDvm.isServer && methodToCall == gDvm.offMethWriteImpl) {
+            /* We allow writing to stdout/stderr on the server. */
+            if (newFp[1] != 1 && newFp[1] != 2) {
+                self->offFlagMigration = true;
+                CHECK_FOR_MIGRATE();
+                dvmAbort();
+            }
+        }
+#endif
+
         /* verify that we have enough space */
         if (true) {
             u1* bottom;
@@ -937,6 +972,9 @@ GOTO_TARGET(invokeMethod, bool methodCallRange, const Method* _methodToCall,
             /* pop frame off */
             dvmPopJniLocals(self, newSaveArea);
             self->interpSave.curFrame = fp;
+#ifdef WITH_OFFLOAD
+            offStackFramePopped(self);
+#endif
 
             /*
              * If the native code threw an exception, or interpreted code

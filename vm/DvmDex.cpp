@@ -73,6 +73,11 @@ static DvmDex* allocateAuxStructures(DexFile* pDexFile)
     blob += methodSize;
     pDvmDex->pResFields = (struct Field**)blob;
 
+#ifdef WITH_OFFLOAD
+    pDvmDex->pUnresMethods = (struct Method**)
+        calloc(pHeader->methodIdsSize, sizeof(struct Method*));
+#endif
+
     ALOGV("+++ DEX %p: allocateAux (%d+%d+%d+%d)*4 = %d bytes",
         pDvmDex, stringSizei/4, classSize/4, methodSize/4, fieldSize/4,
         stringSize + classSize + methodSize + fieldSize);
@@ -191,6 +196,11 @@ void dvmDexFileFree(DvmDex* pDvmDex)
     totalSize += sizeof(DvmDex);
 
     dexFileFree(pDvmDex->pDexFile);
+
+#ifdef WITH_OFFLOAD
+    free(pDvmDex->pUnresMethods);
+    free(pDvmDex->cacheFile);
+#endif
 
     ALOGV("+++ DEX %p: freeing aux structs", pDvmDex);
     dvmFreeAtomicCache(pDvmDex->pInterfaceCache);

@@ -95,6 +95,27 @@ Current plan is option (b), because it's simple, fast, and doesn't change
 the way the stack works.
 */
 
+#ifdef WITH_OFFLOAD
+static int ENCODE_STACK_FIRST(const Method* meth, int pc) {
+    return meth->clazz->pDvmDex->id << 24 | PACK_METHOD_IDX(meth);
+}
+static int ENCODE_STACK_SECOND(const Method* meth, int pc) {
+    return pc;
+}
+static Method* DECODE_METHOD(int first, int second) {
+    return auxMethodByIdx(offIdToDex(first >> 24), GET_METHOD_IDX(first),
+                  GET_METHOD_STATIC(first), GET_METHOD_DIRECT(first), false);
+}
+static int DECODE_PC(int first, int second) {
+    return second;
+}
+#else
+#define ENCODE_STACK_FIRST(meth, pc)  ((int)(meth))
+#define ENCODE_STACK_SECOND(meth, pc) (pc)
+#define DECODE_METHOD(first, second)  ((Method*)(first))
+#define DECODE_PC(first, second)      (second)
+#endif
+
 /* fwd */
 static bool initException(Object* exception, const char* msg, Object* cause,
     Thread* self);
@@ -788,8 +809,12 @@ int dvmFindCatchBlock(Thread* self, int relPc, Object* exception,
         }
     }
 
-    if (!scanOnly)
+    if (!scanOnly) {
         self->interpSave.curFrame = fp;
+#ifdef WITH_OFFLOAD
+        offStackFramePopped(self);
+#endif
+    }
 
     /*
      * The class resolution in findCatchInMethod() could cause an exception.
@@ -911,15 +936,23 @@ void* dvmFillInStackTraceInternal(Thread* thread, bool wantObject, size_t* pCoun
             //ALOGD("EXCEP keeping %s.%s", method->clazz->descriptor,
             //         method->name);
 
-            *intPtr++ = (int) method;
+            int pc;
             if (dvmIsNativeMethod(method)) {
-                *intPtr++ = 0;      /* no saved PC for native methods */
+                pc = 0;      /* no saved PC for native methods */
             } else {
                 assert(saveArea->xtra.currentPc >= method->insns &&
                         saveArea->xtra.currentPc <
                         method->insns + dvmGetMethodInsnsSize(method));
-                *intPtr++ = (int) (saveArea->xtra.currentPc - method->insns);
+                pc = (int) (saveArea->xtra.currentPc - method->insns);
             }
+            *intPtr++ = ENCODE_STACK_FIRST(method, pc);
+            *intPtr++ = ENCODE_STACK_SECOND(method, pc);
+#ifdef WITH_OFFLOAD
+            if (wantObject) {
+                u4 ind = intPtr - (int*)(void*)stackData->contents;
+                offTrackArrayWrite(stackData, ind - 2, ind);
+            }
+#endif
 
             stackDepth--;       // for verification
         }
@@ -998,8 +1031,10 @@ void dvmFillStackTraceElements(const int* intVals, size_t stackDepth, ArrayObjec
             return;
         }
 
-        Method* meth = (Method*) *intVals++;
-        int pc = *intVals++;
+        int stkFirst = *intVals++;
+        int stkSecond = *intVals++;
+        Method* meth = DECODE_METHOD(stkFirst, stkSecond);
+        int pc = DECODE_PC(stkFirst, stkSecond);
 
         int lineNumber;
         if (pc == -1)      // broken top frame?
@@ -1046,8 +1081,10 @@ void dvmLogRawStackTrace(const int* intVals, int stackDepth) {
      * Run through the array of stack frame data.
      */
     for (int i = 0; i < stackDepth; i++) {
-        Method* meth = (Method*) *intVals++;
-        int pc = *intVals++;
+        int stkFirst = *intVals++;
+        int stkSecond = *intVals++;
+        Method* meth = DECODE_METHOD(stkFirst, stkSecond);
+        int pc = DECODE_PC(stkFirst, stkSecond);
 
         std::string dotName(dvmHumanReadableDescriptor(meth->clazz->descriptor));
         if (dvmIsNativeMethod(meth)) {

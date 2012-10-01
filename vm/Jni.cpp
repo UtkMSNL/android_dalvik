@@ -195,6 +195,13 @@ static void checkStackSum(Thread* self) {
  * ===========================================================================
  */
 
+#ifdef WITH_OFFLOAD
+#define SCHEDULER_UNSAFE_POINT()                                            \
+        offSchedulerUnsafePoint(((JNIEnvExt*)env)->self);
+#else
+#define SCHEDULER_UNSAFE_POINT()
+#endif
+
 /*
  * Entry/exit processing for all JNI calls.
  *
@@ -1147,6 +1154,13 @@ void dvmCallJNIMethod(const u4* args, JValue* pResult, const Method* method, Thr
     ANDROID_MEMBAR_FULL();      /* guarantee ordering on method->insns */
     assert(method->insns != NULL);
 
+#ifdef WITH_OFFLOAD
+    if (~method->accessFlags & ACC_OFFLOADABLE) offSchedulerUnsafePoint(self);
+#endif
+#ifdef WITH_TRACER
+    trTraceNative(method);
+#endif
+
     JNIEnv* env = self->jniEnv;
     COMPUTE_STACK_SUM(self);
     dvmPlatformInvoke(env,
@@ -1154,6 +1168,10 @@ void dvmCallJNIMethod(const u4* args, JValue* pResult, const Method* method, Thr
             method->jniArgInfo, method->insSize, modArgs, method->shorty,
             (void*) method->insns, pResult);
     CHECK_STACK_SUM(self);
+
+#ifdef WITH_OFFLOAD
+    if (~method->accessFlags & ACC_OFFLOADABLE) offSchedulerUnsafePoint(self);
+#endif
 
     dvmChangeStatus(self, oldStatus);
 
@@ -1521,6 +1539,7 @@ static jobject AllocObject(JNIEnv* env, jclass jclazz) {
  */
 static jobject NewObject(JNIEnv* env, jclass jclazz, jmethodID methodID, ...) {
     ScopedJniThreadState ts(env);
+    SCHEDULER_UNSAFE_POINT();
     ClassObject* clazz = (ClassObject*) dvmDecodeIndirectRef(ts.self(), jclazz);
 
     if (!canAllocClass(clazz) || (!dvmIsClassInitialized(clazz) && !dvmInitClass(clazz))) {
@@ -1542,6 +1561,7 @@ static jobject NewObject(JNIEnv* env, jclass jclazz, jmethodID methodID, ...) {
 
 static jobject NewObjectV(JNIEnv* env, jclass jclazz, jmethodID methodID, va_list args) {
     ScopedJniThreadState ts(env);
+    SCHEDULER_UNSAFE_POINT();
     ClassObject* clazz = (ClassObject*) dvmDecodeIndirectRef(ts.self(), jclazz);
 
     if (!canAllocClass(clazz) || (!dvmIsClassInitialized(clazz) && !dvmInitClass(clazz))) {
@@ -1560,6 +1580,7 @@ static jobject NewObjectV(JNIEnv* env, jclass jclazz, jmethodID methodID, va_lis
 
 static jobject NewObjectA(JNIEnv* env, jclass jclazz, jmethodID methodID, jvalue* args) {
     ScopedJniThreadState ts(env);
+    SCHEDULER_UNSAFE_POINT();
     ClassObject* clazz = (ClassObject*) dvmDecodeIndirectRef(ts.self(), jclazz);
 
     if (!canAllocClass(clazz) || (!dvmIsClassInitialized(clazz) && !dvmInitClass(clazz))) {
@@ -1908,7 +1929,8 @@ SET_TYPE_FIELD(jdouble, double, Double, false);
         jmethodID methodID, ...)                                            \
     {                                                                       \
         ScopedJniThreadState ts(env);                                       \
-        Object* obj = dvmDecodeIndirectRef(ts.self(), jobj);                      \
+        SCHEDULER_UNSAFE_POINT();                                           \
+        Object* obj = dvmDecodeIndirectRef(ts.self(), jobj);                \
         const Method* meth;                                                 \
         va_list args;                                                       \
         JValue result;                                                      \
@@ -1920,13 +1942,14 @@ SET_TYPE_FIELD(jdouble, double, Double, false);
         dvmCallMethodV(ts.self(), meth, obj, true, &result, args);          \
         va_end(args);                                                       \
         if (_isref && !dvmCheckException(ts.self()))                        \
-            result.l = (Object*)addLocalReference(ts.self(), result.l);           \
+            result.l = (Object*)addLocalReference(ts.self(), result.l);     \
         return _retok;                                                      \
     }                                                                       \
     static _ctype Call##_jname##MethodV(JNIEnv* env, jobject jobj,          \
         jmethodID methodID, va_list args)                                   \
     {                                                                       \
         ScopedJniThreadState ts(env);                                       \
+        SCHEDULER_UNSAFE_POINT();                                           \
         Object* obj = dvmDecodeIndirectRef(ts.self(), jobj);                      \
         const Method* meth;                                                 \
         JValue result;                                                      \
@@ -1943,6 +1966,7 @@ SET_TYPE_FIELD(jdouble, double, Double, false);
         jmethodID methodID, jvalue* args)                                   \
     {                                                                       \
         ScopedJniThreadState ts(env);                                       \
+        SCHEDULER_UNSAFE_POINT();                                           \
         Object* obj = dvmDecodeIndirectRef(ts.self(), jobj);                      \
         const Method* meth;                                                 \
         JValue result;                                                      \
@@ -1978,6 +2002,7 @@ CALL_VIRTUAL(void, Void, , , false);
         jclass jclazz, jmethodID methodID, ...)                             \
     {                                                                       \
         ScopedJniThreadState ts(env);                                       \
+        SCHEDULER_UNSAFE_POINT();                                           \
         Object* obj = dvmDecodeIndirectRef(ts.self(), jobj);                      \
         ClassObject* clazz = (ClassObject*) dvmDecodeIndirectRef(ts.self(), jclazz); \
         const Method* meth;                                                 \
@@ -1998,6 +2023,7 @@ CALL_VIRTUAL(void, Void, , , false);
         jclass jclazz, jmethodID methodID, va_list args)                    \
     {                                                                       \
         ScopedJniThreadState ts(env);                                       \
+        SCHEDULER_UNSAFE_POINT();                                           \
         Object* obj = dvmDecodeIndirectRef(ts.self(), jobj);                      \
         ClassObject* clazz = (ClassObject*) dvmDecodeIndirectRef(ts.self(), jclazz); \
         const Method* meth;                                                 \
@@ -2015,6 +2041,7 @@ CALL_VIRTUAL(void, Void, , , false);
         jclass jclazz, jmethodID methodID, jvalue* args)                    \
     {                                                                       \
         ScopedJniThreadState ts(env);                                       \
+        SCHEDULER_UNSAFE_POINT();                                           \
         Object* obj = dvmDecodeIndirectRef(ts.self(), jobj); \
         ClassObject* clazz = (ClassObject*) dvmDecodeIndirectRef(ts.self(), jclazz); \
         const Method* meth;                                                 \
@@ -2049,6 +2076,7 @@ CALL_NONVIRTUAL(void, Void, , , false);
     {                                                                       \
         UNUSED_PARAMETER(jclazz);                                           \
         ScopedJniThreadState ts(env);                                       \
+        SCHEDULER_UNSAFE_POINT();                                           \
         JValue result;                                                      \
         va_list args;                                                       \
         va_start(args, methodID);                                           \
@@ -2063,6 +2091,7 @@ CALL_NONVIRTUAL(void, Void, , , false);
     {                                                                       \
         UNUSED_PARAMETER(jclazz);                                           \
         ScopedJniThreadState ts(env);                                       \
+        SCHEDULER_UNSAFE_POINT();                                           \
         JValue result;                                                      \
         dvmCallMethodV(ts.self(), (Method*)methodID, NULL, true, &result, args);\
         if (_isref && !dvmCheckException(ts.self()))                        \
@@ -2074,6 +2103,7 @@ CALL_NONVIRTUAL(void, Void, , , false);
     {                                                                       \
         UNUSED_PARAMETER(jclazz);                                           \
         ScopedJniThreadState ts(env);                                       \
+        SCHEDULER_UNSAFE_POINT();                                           \
         JValue result;                                                      \
         dvmCallMethodA(ts.self(), (Method*)methodID, NULL, true, &result, args);\
         if (_isref && !dvmCheckException(ts.self()))                        \
@@ -2261,6 +2291,10 @@ static jobjectArray NewObjectArray(JNIEnv* env, jsize length,
         }
     }
 
+#ifdef WITH_OFFLOAD
+    offTrackArrayWrite(newObj, 0, length);
+#endif
+
     return newArray;
 }
 
@@ -2339,6 +2373,45 @@ NEW_PRIMITIVE_ARRAY(jlongArray, Long, 'J');
 NEW_PRIMITIVE_ARRAY(jfloatArray, Float, 'F');
 NEW_PRIMITIVE_ARRAY(jdoubleArray, Double, 'D');
 
+#ifdef WITH_OFFLOAD
+#define kNoCopyMagic    0xd5aab57f
+
+#define GET_PRIMITIVE_ARRAY_ELEMENTS(_ctype, _jname)                          \
+    static _ctype* Get##_jname##ArrayElements(JNIEnv* env,                    \
+        _ctype##Array jarr, jboolean* isCopy)                                 \
+    {                                                                         \
+        ScopedJniThreadState ts(env);                                         \
+        u4 noCopy = isCopy ? *(u4*)(void*) isCopy : 0;                        \
+        ArrayObject* arrayObj = (ArrayObject*) dvmDecodeIndirectRef(          \
+                                                  ts.self(), jarr);           \
+        if (noCopy == kNoCopyMagic)                                           \
+            return (_ctype*)(void*) arrayObj->contents;                       \
+        _ctype* data = (_ctype*) malloc(arrayObj->length * sizeof(_ctype));   \
+        memcpy(data, arrayObj->contents, arrayObj->length * sizeof(_ctype));  \
+        if (isCopy != NULL)                                                   \
+            *isCopy = JNI_TRUE;                                               \
+        return data;                                                          \
+    }
+
+#define RELEASE_PRIMITIVE_ARRAY_ELEMENTS(_ctype, _jname)                    \
+    static void Release##_jname##ArrayElements(JNIEnv* env,                 \
+        _ctype##Array jarr, _ctype* elems, jint mode)                       \
+    {                                                                       \
+        ScopedJniThreadState ts(env);                                       \
+        if (elems == (_ctype*) kNoCopyMagic)                                \
+            return;                                                         \
+        ArrayObject* arrayObj = (ArrayObject*)                              \
+              dvmDecodeIndirectRef(ts.self(), jarr);                        \
+        if (mode != JNI_ABORT) {                                            \
+            memcpy(arrayObj->contents, elems,                               \
+                   sizeof(_ctype) * arrayObj->length);                      \
+            offTrackArrayWrite(arrayObj, 0, arrayObj->length);              \
+        }                                                                   \
+        if (mode != JNI_COMMIT) {                                           \
+            free(elems);                                                    \
+        }                                                                   \
+    }
+#else
 /*
  * Get a pointer to a C array of primitive elements from an array object
  * of the matching type.
@@ -2380,6 +2453,7 @@ NEW_PRIMITIVE_ARRAY(jdoubleArray, Double, 'D');
             unpinPrimitiveArray(arrayObj);                                  \
         }                                                                   \
     }
+#endif
 
 static void throwArrayRegionOutOfBounds(ArrayObject* arrayObj, jsize start,
     jsize len, const char* arrayIdentifier)
@@ -2407,6 +2481,12 @@ static void throwArrayRegionOutOfBounds(ArrayObject* arrayObj, jsize start,
         } \
     }
 
+#ifdef WITH_OFFLOAD
+#define TRACK_ARRAY_WRITE(obj, start, end) offTrackArrayWrite(obj, start, end)
+#else
+#define TRACK_ARRAY_WRITE(obj, start, end) do {} while(0)
+#endif
+
 /*
  * Copy a section of a primitive array from a buffer.
  */
@@ -2421,6 +2501,7 @@ static void throwArrayRegionOutOfBounds(ArrayObject* arrayObj, jsize start,
             throwArrayRegionOutOfBounds(arrayObj, start, len, "dst"); \
         } else { \
             memcpy(data + start, buf, len * sizeof(_ctype)); \
+            TRACK_ARRAY_WRITE(arrayObj, start, start + len); \
         } \
     }
 
@@ -2594,11 +2675,19 @@ static void GetStringUTFRegion(JNIEnv* env, jstring jstr, jsize start, jsize len
 static void* GetPrimitiveArrayCritical(JNIEnv* env, jarray jarr, jboolean* isCopy) {
     ScopedJniThreadState ts(env);
     ArrayObject* arrayObj = (ArrayObject*) dvmDecodeIndirectRef(ts.self(), jarr);
+#ifdef WITH_OFFLOAD
+    u4 width = auxTypeWidth(arrayObj->clazz->descriptor[1]);
+    void* data = malloc(arrayObj->length * width);
+    memcpy(data, arrayObj->contents, arrayObj->length * width);
+    if (isCopy != NULL)
+        *isCopy = JNI_TRUE;
+#else
     pinPrimitiveArray(arrayObj);
     void* data = arrayObj->contents;
     if (UNLIKELY(isCopy != NULL)) {
         *isCopy = JNI_FALSE;
     }
+#endif
     return data;
 }
 
@@ -2606,10 +2695,21 @@ static void* GetPrimitiveArrayCritical(JNIEnv* env, jarray jarr, jboolean* isCop
  * Release an array obtained with GetPrimitiveArrayCritical.
  */
 static void ReleasePrimitiveArrayCritical(JNIEnv* env, jarray jarr, void* carray, jint mode) {
+    ScopedJniThreadState ts(env);
+    ArrayObject* arrayObj = (ArrayObject*) dvmDecodeIndirectRef(ts.self(), jarr);
+#ifdef WITH_OFFLOAD
+    if (mode != JNI_ABORT) {
+        u4 width = auxTypeWidth(arrayObj->clazz->descriptor[1]);
+        memcpy(arrayObj->contents, carray, width * arrayObj->length);
+        offTrackArrayWrite(arrayObj, 0, arrayObj->length);
+    }
+#endif
     if (mode != JNI_COMMIT) {
-        ScopedJniThreadState ts(env);
-        ArrayObject* arrayObj = (ArrayObject*) dvmDecodeIndirectRef(ts.self(), jarr);
+#ifdef WITH_OFFLOAD
+        free(carray);
+#else
         unpinPrimitiveArray(arrayObj);
+#endif
     }
 }
 
@@ -2689,6 +2789,7 @@ static jobjectRefType GetObjectRefType(JNIEnv* env, jobject jobj) {
  */
 static jobject NewDirectByteBuffer(JNIEnv* env, void* address, jlong capacity) {
     ScopedJniThreadState ts(env);
+    SCHEDULER_UNSAFE_POINT();
 
     /* create an instance of java.nio.ReadWriteDirectByteBuffer */
     ClassObject* bufferClazz = gDvm.classJavaNioReadWriteDirectByteBuffer;
@@ -2718,6 +2819,7 @@ static jobject NewDirectByteBuffer(JNIEnv* env, void* address, jlong capacity) {
  */
 static void* GetDirectBufferAddress(JNIEnv* env, jobject jbuf) {
     ScopedJniThreadState ts(env);
+    SCHEDULER_UNSAFE_POINT();
 
     // All Buffer objects have an effectiveDirectAddress field.
     Object* bufObj = dvmDecodeIndirectRef(ts.self(), jbuf);
@@ -3516,5 +3618,13 @@ jint JNI_CreateJavaVM(JavaVM** p_vm, JNIEnv** p_env, void* vm_args) {
     *p_env = (JNIEnv*) pEnv;
     *p_vm = (JavaVM*) pVM;
     ALOGV("CreateJavaVM succeeded");
+
+#ifdef WITH_OFFLOAD
+    if (gDvm.isServer) {
+        offControlLoop(NULL);
+        exit(0);
+    }
+#endif
+
     return JNI_OK;
 }

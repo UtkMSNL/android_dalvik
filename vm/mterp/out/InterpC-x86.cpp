@@ -496,12 +496,33 @@ static inline bool checkForNullExportPC(Object* obj, u4* fp, const u2* pc)
  * While we're at it, see if a debugger has attached or the profiler has
  * started.
  */
+#ifdef WITH_OFFLOAD
+#define PERIODIC_CHECKS(_pcadj) {                              \
+        if (dvmCheckSuspendQuick(self)) {                                   \
+            EXPORT_PC();  /* need for precise GC */                         \
+            dvmCheckSuspendPending(self);                                   \
+        }                                                                   \
+        if (self->offFlagMigration) {                                       \
+            self->offFlagMigration = false;                                 \
+            offMigrateThread(self);                                         \
+            const StackSaveArea* saveArea = SAVEAREA_FROM_FP(self->interpSave.curFrame);\
+            curMethod = saveArea->method;                                   \
+            fp = (u4*) self->interpSave.curFrame;                           \
+            pc = saveArea->savedPc;                                         \
+            methodClassDex = curMethod->clazz->pDvmDex;                     \
+            if (dvmCheckException(self)) {                                  \
+                GOTO_exceptionThrown();                                     \
+            }                                                               \
+        }                                                                   \
+    }
+#else
 #define PERIODIC_CHECKS(_pcadj) {                              \
         if (dvmCheckSuspendQuick(self)) {                                   \
             EXPORT_PC();  /* need for precise GC */                         \
             dvmCheckSuspendPending(self);                                   \
         }                                                                   \
     }
+#endif
 
 /* File: c/opcommon.cpp */
 /* forward declarations of goto targets */
@@ -968,6 +989,15 @@ GOTO_TARGET_DECL(exceptionThrown);
     }                                                                       \
     FINISH(2);
 
+#ifdef WITH_OFFLOAD
+#define OFFLOAD_APUT(_aobj, _index) do {                                    \
+        u4 index = (_index);                                                \
+        offTrackArrayWrite(_aobj, index, index + 1);                        \
+    } while(0)
+#else
+#define OFFLOAD_APUT(__aobj, __index)
+#endif
+
 #define HANDLE_OP_APUT(_opcode, _opname, _type, _regsize)                   \
     HANDLE_OPCODE(_opcode /*vAA, vBB, vCC*/)                                \
     {                                                                       \
@@ -990,6 +1020,7 @@ GOTO_TARGET_DECL(exceptionThrown);
         ILOGV("+ APUT[%d]=0x%08x", GET_REGISTER(vsrc2), GET_REGISTER(vdst));\
         ((_type*)(void*)arrayObj->contents)[GET_REGISTER(vsrc2)] =          \
             GET_REGISTER##_regsize(vdst);                                   \
+        OFFLOAD_APUT(arrayObj, GET_REGISTER(vsrc2));                        \
     }                                                                       \
     FINISH(2);
 
@@ -1637,7 +1668,16 @@ GOTO_TARGET(invokeStatic, bool methodCallRange)
 
     methodToCall = dvmDexGetResolvedMethod(methodClassDex, ref);
     if (methodToCall == NULL) {
+#ifdef CHECK_STACK_INTEGRITY_DO
+        /* Only when we resolve static methods might we have to initialize the
+         * base class.  Otherwise having a ref to 'this' ensures it is
+         * initialized already. */
+        CHECK_STACK_INTEGRITY_DO(
+          methodToCall = dvmResolveMethod(curMethod->clazz, ref, METHOD_STATIC)
+        );
+#else
         methodToCall = dvmResolveMethod(curMethod->clazz, ref, METHOD_STATIC);
+#endif
         if (methodToCall == NULL) {
             ILOGV("+ unknown method");
             GOTO_exceptionThrown();
@@ -1819,6 +1859,12 @@ GOTO_TARGET(returnFromMethod)
         if (dvmIsBreakFrame(fp)) {
             /* bail without popping the method frame from stack */
             LOGVV("+++ returned into break frame");
+
+#ifdef WITH_OFFLOAD
+            /* Export pc on the old frame. */
+            saveArea->xtra.currentPc = pc;
+#endif
+
             GOTO_bail();
         }
 
@@ -1832,6 +1878,9 @@ GOTO_TARGET(returnFromMethod)
         ILOGD("> (return to %s.%s %s)", curMethod->clazz->descriptor,
             curMethod->name, curMethod->shorty);
 
+#ifdef WITH_OFFLOAD
+        offStackFramePopped(self);
+#endif
         /* use FINISH on the caller's invoke instruction */
         //u2 invokeInstr = INST_INST(FETCH(0));
         if (true /*invokeInstr >= OP_INVOKE_VIRTUAL &&
@@ -2095,6 +2144,23 @@ GOTO_TARGET(invokeMethod, bool methodCallRange, const Method* _methodToCall,
         newFp = (u4*) SAVEAREA_FROM_FP(fp) - methodToCall->registersSize;
         newSaveArea = SAVEAREA_FROM_FP(newFp);
 
+#if defined(WITH_OFFLOAD) && defined(CHECK_FOR_MIGRATE)
+        if (gDvm.isServer && !gDvm.initializing &&
+              dvmIsNativeMethod(methodToCall) &&
+              (~methodToCall->accessFlags & ACC_OFFLOADABLE)) {
+            self->offFlagMigration = true;
+            CHECK_FOR_MIGRATE();
+            dvmAbort();
+        } else if(gDvm.isServer && methodToCall == gDvm.offMethWriteImpl) {
+            /* We allow writing to stdout/stderr on the server. */
+            if (newFp[1] != 1 && newFp[1] != 2) {
+                self->offFlagMigration = true;
+                CHECK_FOR_MIGRATE();
+                dvmAbort();
+            }
+        }
+#endif
+
         /* verify that we have enough space */
         if (true) {
             u1* bottom;
@@ -2194,6 +2260,9 @@ GOTO_TARGET(invokeMethod, bool methodCallRange, const Method* _methodToCall,
             /* pop frame off */
             dvmPopJniLocals(self, newSaveArea);
             self->interpSave.curFrame = fp;
+#ifdef WITH_OFFLOAD
+            offStackFramePopped(self);
+#endif
 
             /*
              * If the native code threw an exception, or interpreted code

@@ -90,6 +90,12 @@ void dvmObjectWait(Thread* self, Object* obj,
 void dvmObjectNotify(Thread* self, Object* obj);
 void dvmObjectNotifyAll(Thread* self, Object* obj);
 
+#ifdef WITH_OFFLOAD
+void dvmLockObjectLocal(struct Thread* self, struct Object* obj);
+bool dvmObjectNotifyLocal(struct Thread* self, struct Object* obj);
+void dvmObjectNotifyAllLocal(struct Thread* self, struct Object* obj);
+#endif
+
 /*
  * Implementation of System.identityHashCode().
  */
@@ -106,6 +112,10 @@ void dvmThreadSleep(u8 msec, u4 nsec);
  * Interrupt a thread.  If it's waiting on a monitor, wake it up.
  */
 void dvmThreadInterrupt(Thread* thread);
+
+#ifdef WITH_OFFLOAD
+void dvmThreadInterruptLocal(struct Thread* thread);
+#endif
 
 /* create a new Monitor struct */
 Monitor* dvmCreateMonitor(Object* obj);
@@ -146,5 +156,42 @@ bool dvmHoldsLock(Thread* thread, Object* obj);
  */
 int dvmRelativeCondWait(pthread_cond_t* cond, pthread_mutex_t* mutex,
                          s8 msec, s4 nsec);
+
+/*
+ * Monitors provide:
+ *  - mutually exclusive access to resources
+ *  - a way for multiple threads to wait for notification
+ *
+ * In effect, they fill the role of both mutexes and condition variables.
+ *
+ * Only one thread can own the monitor at any time.  There may be several
+ * threads waiting on it (the wait call unlocks it).  One or more waiting
+ * threads may be getting interrupted or notified at any given time.
+ *
+ * TODO: the various members of monitor are not SMP-safe.
+ */
+struct Monitor {
+    Thread*     owner;          /* which thread currently owns the lock? */
+    int         lockCount;      /* owner's recursive lock depth */
+    Object*     obj;            /* what object are we part of [debug only] */
+
+    Thread*     waitSet;	/* threads currently waiting on this monitor */
+
+    pthread_mutex_t lock;
+
+    Monitor*    next;
+
+    /*
+     * Who last acquired this monitor, when lock sampling is enabled.
+     * Even when enabled, ownerMethod may be NULL.
+     */
+    const Method* ownerMethod;
+    u4 ownerPc;
+
+#ifdef WITH_OFFLOAD
+    struct Thread* lastOwner;
+#endif
+};
+
 
 #endif  // DALVIK_SYNC_H_

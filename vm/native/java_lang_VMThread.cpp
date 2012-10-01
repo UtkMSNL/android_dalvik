@@ -107,11 +107,21 @@ static void Dalvik_java_lang_VMThread_interrupt(const u4* args, JValue* pResult)
     Object* thisPtr = (Object*) args[0];
     Thread* thread;
 
+#ifdef WITH_OFFLOAD
+    dvmLockThreadList(NULL);
+    thread = dvmGetThreadFromThreadObject(thisPtr);
+    if (thread != NULL && thread->offLocal)
+        dvmThreadInterrupt(thread);
+    dvmUnlockThreadList();
+    if (thread != NULL && !thread->offLocal)
+        dvmThreadInterrupt(thread);
+#else
     dvmLockThreadList(NULL);
     thread = dvmGetThreadFromThreadObject(thisPtr);
     if (thread != NULL)
         dvmThreadInterrupt(thread);
     dvmUnlockThreadList();
+#endif
     RETURN_VOID();
 }
 

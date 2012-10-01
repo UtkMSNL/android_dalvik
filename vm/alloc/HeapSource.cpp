@@ -950,12 +950,27 @@ size_t dvmHeapSourceFreeList(size_t numPtrs, void **ptrs)
             assert(ptr2heap(gHs, ptrs[0]) == heap);
             countFree(heap, ptrs[0], &numBytes);
             void *merged = ptrs[0];
+
+#ifdef WITH_OFFLOAD
+            assert(((Object*)ptrs[0])->objId == COMM_INVALID_ID);
+#endif
             for (size_t i = 1; i < numPtrs; i++) {
                 assert(merged != NULL);
                 assert(ptrs[i] != NULL);
                 assert((intptr_t)merged < (intptr_t)ptrs[i]);
                 assert(ptr2heap(gHs, ptrs[i]) == heap);
                 countFree(heap, ptrs[i], &numBytes);
+#ifdef WITH_OFFLOAD
+
+                if(((Object*)ptrs[i])->objId != COMM_INVALID_ID) {
+                  ALOGE("FAIL %d", ((Object*)ptrs[i])->objId);
+                  ALOGE("FAIL %s", ((Object*)ptrs[i])->clazz->descriptor);
+                  assert(ptrs[i] ==
+                         (void*)offIdToObject(((Object*)ptrs[i])->objId));
+                }
+                assert(((Object*)ptrs[i])->objId == COMM_INVALID_ID);
+#endif
+
                 // Try to merge. If it works, merged now includes the
                 // memory of ptrs[i]. If it doesn't, free merged, and
                 // see if ptrs[i] starts a new run of adjacent

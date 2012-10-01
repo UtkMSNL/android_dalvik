@@ -37,6 +37,11 @@ static bool isMarked(const Object *obj, const GcMarkContext *ctx)
     return dvmHeapBitmapIsObjectBitSet(ctx->bitmap, obj);
 }
 
+bool dvmIsMarked(const Object* obj)
+{
+    return isMarked(obj, &gDvm.gcHeap->markContext) != 0;
+}
+
 /*
  * Initializes the stack top and advises the mark stack pages as needed.
  */
@@ -108,6 +113,8 @@ static void markObjectNonNull(const Object *obj, GcMarkContext *ctx,
 {
     assert(ctx != NULL);
     assert(obj != NULL);
+    if(!dvmIsValidObject(obj)) ALOGI("FAIL %p %s %d", obj,
+obj->clazz->descriptor, obj->objId);
     assert(dvmIsValidObject(obj));
     if (obj < (Object *)ctx->immuneLimit) {
         assert(isMarked(obj, ctx));
@@ -123,6 +130,29 @@ static void markObjectNonNull(const Object *obj, GcMarkContext *ctx,
         }
     }
 }
+
+#ifdef WITH_OFFLOAD
+void dvmMarkObjectNonNull(const Object *obj, bool checkFinger)
+{
+    assert(obj != NULL);
+    markObjectNonNull(obj, &gDvm.gcHeap->markContext, checkFinger);
+}
+
+void dvmMarkObjectOnStack(const Object *obj, GcMarkContext *ctx)
+{
+    assert(ctx != NULL);
+    assert(obj != NULL);
+    assert(dvmIsValidObject(obj));
+
+    if (obj < (Object *)ctx->immuneLimit) {
+        assert(isMarked(obj, ctx));
+        return;
+    }
+    if (!setAndReturnMarkBit(ctx, obj)) {
+        markStackPush(&ctx->stack, obj);
+    }
+}
+#endif
 
 /* Used to mark objects when recursing.  Recursion is done by moving
  * the finger across the bitmaps in address order and marking child
@@ -480,6 +510,11 @@ static void processMarkStack(GcMarkContext *ctx)
     }
 }
 
+void dvmProcessMarkStack(GcMarkContext* ctx)
+{
+    processMarkStack(ctx);
+}
+
 static size_t objectSize(const Object *obj)
 {
     assert(dvmIsValidObject(obj));
@@ -829,6 +864,7 @@ void dvmEnqueueClearedReferences(Object **cleared)
 {
     assert(cleared != NULL);
     if (*cleared != NULL) {
+/*
         Thread *self = dvmThreadSelf();
         assert(self != NULL);
         Method *meth = gDvm.methJavaLangRefReferenceQueueAdd;
@@ -836,6 +872,7 @@ void dvmEnqueueClearedReferences(Object **cleared)
         JValue unused;
         Object *reference = *cleared;
         dvmCallMethod(self, meth, NULL, &unused, reference);
+*/
         *cleared = NULL;
     }
 }

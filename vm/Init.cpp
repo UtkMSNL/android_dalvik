@@ -1042,6 +1042,11 @@ static int processOptions(int argc, const char* const argv[],
         }
     }
 
+#ifdef WITH_OFFLOAD
+    gDvm.preciseGc = true;
+    gDvm.generateRegisterMaps = true;
+#endif
+
     return 0;
 }
 
@@ -1097,7 +1102,9 @@ static void setCommandLineDefaults()
      * we know we're using the "desktop" build we should probably be
      * using "portable" rather than "fast".
      */
-#if defined(WITH_JIT)
+#if defined(WITH_OFFLOAD)
+    gDvm.executionMode = kExecutionModeInterpPortable;
+#elif defined(WITH_JIT)
     gDvm.executionMode = kExecutionModeJit;
 #else
     gDvm.executionMode = kExecutionModeInterpFast;
@@ -1107,7 +1114,11 @@ static void setCommandLineDefaults()
      * SMP support is a compile-time define, but we may want to have
      * dexopt target a differently-configured device.
      */
+#ifdef WITH_OFFLOAD
+    gDvm.dexOptForSmp = true;
+#else
     gDvm.dexOptForSmp = (ANDROID_SMP != 0);
+#endif
 
     /*
      * Default profiler configuration.
@@ -1256,6 +1267,10 @@ std::string dvmStartup(int argc, const char* const argv[],
     /*
      * Initialize components.
      */
+#ifdef WITH_OFFLOAD
+    if (!offControlStartup(false))
+        return "offControlStartup failed";
+#endif
     if (!dvmAllocTrackerStartup()) {
         return "dvmAllocTrackerStartup failed";
     }
@@ -1531,6 +1546,11 @@ bool dvmInitAfterZygote()
     }
 #endif
 
+#ifdef WITH_OFFLOAD
+    if (!offControlStartup(true))
+        return false;
+#endif
+
     return true;
 }
 
@@ -1631,7 +1651,11 @@ int dvmPrepForDexOpt(const char* bootClassPath, DexOptimizerMode dexOptMode,
     /* set opt/verify modes */
     gDvm.dexOptMode = dexOptMode;
     gDvm.classVerifyMode = verifyMode;
+#ifdef WITH_OFFLOAD
+    gDvm.generateRegisterMaps = true;
+#else
     gDvm.generateRegisterMaps = (dexoptFlags & DEXOPT_GEN_REGISTER_MAPS) != 0;
+#endif
     if (dexoptFlags & DEXOPT_SMP) {
         assert((dexoptFlags & DEXOPT_UNIPROCESSOR) == 0);
         gDvm.dexOptForSmp = true;
@@ -1735,6 +1759,9 @@ void dvmShutdown()
     if (gDvm.verboseShutdown)
         ALOGD("VM cleaning up");
 
+#ifdef WITH_OFFLOAD
+    offControlShutdown();
+#endif
     dvmDebuggerShutdown();
     dvmProfilingShutdown();
     dvmJniShutdown();

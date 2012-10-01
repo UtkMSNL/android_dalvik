@@ -287,6 +287,9 @@ static void setStaticFieldValue(StaticField* sfield, const JValue* value)
         default:
             /* just copy the whole thing */
             sfield->value = *value;
+#ifdef WITH_OFFLOAD
+            offTrackGlobalWrite(sfield);
+#endif
             break;
         }
     } else {
@@ -427,8 +430,6 @@ static void setFieldValue(Field* field, Object* obj, const JValue* value)
         return setInstFieldValue((InstField*) field, obj, value);
     }
 }
-
-
 
 /*
  * public int getFieldModifiers(Class declaringClass, int slot)

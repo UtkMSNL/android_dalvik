@@ -19,6 +19,7 @@
  */
 #include "Dalvik.h"
 #include "native/InternalNativePriv.h"
+#include "JarFile.h"
 
 /*
  * Return true if the given name ends with ".dex".
@@ -30,18 +31,6 @@ static bool hasDexExtension(const char* name) {
         && (name[len - 5] != '/')
         && (strcmp(&name[len - 4], ".dex") == 0);
 }
-
-/*
- * Internal struct for managing DexFile.
- */
-struct DexOrJar {
-    char*       fileName;
-    bool        isDex;
-    bool        okayToFree;
-    RawDexFile* pRawDexFile;
-    JarFile*    pJarFile;
-    u1*         pDexMemory; // malloc()ed memory, if any
-};
 
 /*
  * (This is a dvmHashTableFree callback.)
@@ -86,6 +75,11 @@ static bool validateCookie(int cookie)
 
     if (pDexOrJar == NULL)
         return false;
+
+#ifdef WITH_OFFLOAD
+    if(pDexOrJar->fileName == NULL)
+      return true;
+#endif
 
     u4 hash = cookie;
     dvmHashTableLock(gDvm.userDexFiles);
@@ -370,6 +364,26 @@ static void Dalvik_dalvik_system_DexFile_defineClass(const u4* args,
         pDvmDex = dvmGetRawDexFileDex(pDexOrJar->pRawDexFile);
     else
         pDvmDex = dvmGetJarFileDex(pDexOrJar->pJarFile);
+
+#if defined(WITH_OFFLOAD)
+    if (pDexOrJar->okayToFree) {
+        if (pDexOrJar->isDex) {
+            offRegisterDex(pDvmDex, loader,
+                           pDexOrJar->pRawDexFile->cacheFileName);
+        } else {
+            offRegisterDex(pDvmDex, loader, pDexOrJar->pJarFile->cacheFileName);
+        }
+    }
+#elif defined(WITH_TRACER)
+    if (pDexOrJar->okayToFree) {
+        if (pDexOrJar->isDex) {
+            trRegisterDex(pDvmDex, loader,
+                          pDexOrJar->pRawDexFile->cacheFileName);
+        } else {
+            trRegisterDex(pDvmDex, loader, pDexOrJar->pJarFile->cacheFileName);
+        }
+    }
+#endif
 
     /* once we load something, we can't unmap the storage */
     pDexOrJar->okayToFree = false;

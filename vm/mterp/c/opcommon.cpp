@@ -462,6 +462,15 @@ GOTO_TARGET_DECL(exceptionThrown);
     }                                                                       \
     FINISH(2);
 
+#ifdef WITH_OFFLOAD
+#define OFFLOAD_APUT(_aobj, _index) do {                                    \
+        u4 index = (_index);                                                \
+        offTrackArrayWrite(_aobj, index, index + 1);                        \
+    } while(0)
+#else
+#define OFFLOAD_APUT(__aobj, __index)
+#endif
+
 #define HANDLE_OP_APUT(_opcode, _opname, _type, _regsize)                   \
     HANDLE_OPCODE(_opcode /*vAA, vBB, vCC*/)                                \
     {                                                                       \
@@ -484,6 +493,7 @@ GOTO_TARGET_DECL(exceptionThrown);
         ILOGV("+ APUT[%d]=0x%08x", GET_REGISTER(vsrc2), GET_REGISTER(vdst));\
         ((_type*)(void*)arrayObj->contents)[GET_REGISTER(vsrc2)] =          \
             GET_REGISTER##_regsize(vdst);                                   \
+        OFFLOAD_APUT(arrayObj, GET_REGISTER(vsrc2));                        \
     }                                                                       \
     FINISH(2);
 

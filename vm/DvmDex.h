@@ -63,6 +63,22 @@ struct DvmDex {
 
     /* lock ensuring mutual exclusion during updates */
     pthread_mutex_t     modLock;
+
+#if defined(WITH_OFFLOAD) || defined(WITH_TRACER)
+    /* A simple identifier for this entry. */
+    u4 id;
+#endif
+
+#ifdef WITH_OFFLOAD
+    /* unresolved resolved methods; parallel to "methodIds" */
+    struct Method**     pUnresMethods;
+
+    /* A special class loader for the dex file designed to load classes
+     * specifically from this dex file or from the root class loader. */
+    Object* classLoader;
+
+    char* cacheFile;
+#endif
 };
 
 
@@ -100,6 +116,20 @@ void dvmDexFileFree(DvmDex* pDvmDex);
 bool dvmDexChangeDex1(DvmDex* pDvmDex, u1* addr, u1 newVal);
 bool dvmDexChangeDex2(DvmDex* pDvmDex, u2* addr, u2 newVal);
 
+#if defined(WITH_OFFLOAD)
+INLINE struct Method* dvmDexGetUnresolvedMethod(const DvmDex* pDvmDex,
+    u4 methodIdx)
+{
+    assert(methodIdx < pDvmDex->pHeader->methodIdsSize);
+    return pDvmDex->pUnresMethods[methodIdx];
+}
+INLINE void dvmDexSetUnresolvedMethod(DvmDex* pDvmDex, u4 methodIdx,
+    struct Method* method)
+{
+    assert(methodIdx < pDvmDex->pHeader->methodIdsSize);
+    pDvmDex->pUnresMethods[methodIdx] = method;
+}
+#endif
 
 /*
  * Return the requested item if it has been resolved, or NULL if it hasn't.

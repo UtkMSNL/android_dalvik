@@ -31,6 +31,18 @@ struct JarFile {
 };
 
 /*
+ * Internal struct for managing DexFile.
+ */
+struct DexOrJar {
+    char*       fileName;
+    bool        isDex;
+    bool        okayToFree;
+    RawDexFile* pRawDexFile;
+    JarFile*    pJarFile;
+    u1*         pDexMemory; // malloc()ed memory, if any
+};
+
+/*
  * Open the Zip archive and get a list of the classfile entries.
  *
  * On success, returns 0 and sets "*ppJarFile" to a newly-allocated JarFile.

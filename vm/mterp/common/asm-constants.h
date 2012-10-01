@@ -3,7 +3,6 @@
  *
  * Constants used by the assembler and verified by the C compiler.
  */
-
 #if defined(ASM_DEF_VERIFY)
   /*
    * Generate C fragments that verify values; assumes "bool failed" exists.
@@ -107,7 +106,11 @@ MTERP_OFFSET(offStackSaveArea_currentPc, StackSaveArea, xtra.currentPc, 12)
 MTERP_OFFSET(offStackSaveArea_localRefCookie, \
                                         StackSaveArea, xtra.localRefCookie, 12)
 MTERP_OFFSET(offStackSaveArea_returnAddr, StackSaveArea, returnAddr, 16)
+#ifdef WITH_OFFLOAD
+MTERP_SIZEOF(sizeofStackSaveArea,       StackSaveArea, 24)
+#else
 MTERP_SIZEOF(sizeofStackSaveArea,       StackSaveArea, 20)
+#endif
 #endif
 
   /* ShadowSpace fields */
@@ -123,14 +126,20 @@ MTERP_OFFSET(offShadowSpace_svState,     ShadowSpace, selfVerificationState, 32)
 MTERP_OFFSET(offShadowSpace_shadowFP,    ShadowSpace, shadowFP, 40)
 #endif
 
+#if defined(WITH_OFFLOAD) || defined(WITH_TRACER)
+#define IDXOFF 8
+#else
+#define IDXOFF 0
+#endif
+
 /* InstField fields */
-MTERP_OFFSET(offInstField_byteOffset,   InstField, byteOffset, 16)
+MTERP_OFFSET(offInstField_byteOffset,   InstField, byteOffset, 16 + IDXOFF)
 
 /* Field fields */
 MTERP_OFFSET(offField_clazz,            Field, clazz, 0)
 
 /* StaticField fields */
-MTERP_OFFSET(offStaticField_value,      StaticField, value, 16)
+MTERP_OFFSET(offStaticField_value,      StaticField, value, 16 + IDXOFF)
 
 /* Method fields */
 MTERP_OFFSET(offMethod_clazz,           Method, clazz, 0)
@@ -200,27 +209,34 @@ MTERP_OFFSET(offThread_jniLocal_topCookie, \
                                 Thread, jniLocalRefTable.segmentState.all, 100)
 #endif
 
+#if defined(WITH_OFFLOAD)
+#define OBJIDOFF 8
+#else
+#define OBJIDOFF 0
+#endif
+
 /* Object fields */
 MTERP_OFFSET(offObject_clazz,           Object, clazz, 0)
-MTERP_OFFSET(offObject_lock,            Object, lock, 4)
+MTERP_OFFSET(offObject_lock,            Object, lock, 4 + OBJIDOFF)
 
 /* Lock shape */
 MTERP_CONSTANT(LW_LOCK_OWNER_SHIFT, 3)
 MTERP_CONSTANT(LW_HASH_STATE_SHIFT, 1)
 
 /* ArrayObject fields */
-MTERP_OFFSET(offArrayObject_length,     ArrayObject, length, 8)
+MTERP_OFFSET(offArrayObject_length,     ArrayObject, length, 8 + OBJIDOFF)
 #ifdef MTERP_NO_UNALIGN_64
-MTERP_OFFSET(offArrayObject_contents,   ArrayObject, contents, 16)
+MTERP_OFFSET(offArrayObject_contents,   ArrayObject, contents, (12 + OBJIDOFF +
+7) / 8 * 8)
 #else
-MTERP_OFFSET(offArrayObject_contents,   ArrayObject, contents, 12)
+MTERP_OFFSET(offArrayObject_contents,   ArrayObject, contents, 12 + OBJIDOFF)
 #endif
 
 /* String fields */
-MTERP_CONSTANT(STRING_FIELDOFF_VALUE,     8)
-MTERP_CONSTANT(STRING_FIELDOFF_HASHCODE, 12)
-MTERP_CONSTANT(STRING_FIELDOFF_OFFSET,   16)
-MTERP_CONSTANT(STRING_FIELDOFF_COUNT,    20)
+MTERP_CONSTANT(STRING_FIELDOFF_VALUE,     8 + OBJIDOFF)
+MTERP_CONSTANT(STRING_FIELDOFF_HASHCODE, 12 + OBJIDOFF)
+MTERP_CONSTANT(STRING_FIELDOFF_OFFSET,   16 + OBJIDOFF)
+MTERP_CONSTANT(STRING_FIELDOFF_COUNT,    20 + OBJIDOFF)
 
 #if defined(WITH_JIT)
 /*
@@ -237,13 +253,15 @@ MTERP_CONSTANT(JIT_CALLEE_SAVE_DOUBLE_COUNT,   8)
 #endif
 
 /* ClassObject fields */
-MTERP_OFFSET(offClassObject_descriptor, ClassObject, descriptor, 24)
-MTERP_OFFSET(offClassObject_accessFlags, ClassObject, accessFlags, 32)
-MTERP_OFFSET(offClassObject_pDvmDex,    ClassObject, pDvmDex, 40)
-MTERP_OFFSET(offClassObject_status,     ClassObject, status, 44)
-MTERP_OFFSET(offClassObject_super,      ClassObject, super, 72)
-MTERP_OFFSET(offClassObject_vtableCount, ClassObject, vtableCount, 112)
-MTERP_OFFSET(offClassObject_vtable,     ClassObject, vtable, 116)
+MTERP_OFFSET(offClassObject_descriptor, ClassObject, descriptor, 24 + OBJIDOFF)
+MTERP_OFFSET(offClassObject_accessFlags, ClassObject, accessFlags,
+                                                              32 + OBJIDOFF)
+MTERP_OFFSET(offClassObject_pDvmDex,    ClassObject, pDvmDex, 40 + OBJIDOFF)
+MTERP_OFFSET(offClassObject_status,     ClassObject, status, 44 + OBJIDOFF)
+MTERP_OFFSET(offClassObject_super,      ClassObject, super, 72 + OBJIDOFF)
+MTERP_OFFSET(offClassObject_vtableCount, ClassObject, vtableCount,
+                                                            112 + OBJIDOFF)
+MTERP_OFFSET(offClassObject_vtable,     ClassObject, vtable, 116 + OBJIDOFF)
 
 #if defined(WITH_JIT)
 MTERP_CONSTANT(kJitNot,                 0)

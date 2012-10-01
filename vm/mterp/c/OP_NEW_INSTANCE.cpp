@@ -15,7 +15,15 @@ HANDLE_OPCODE(OP_NEW_INSTANCE /*vAA, class@BBBB*/)
                 GOTO_exceptionThrown();
         }
 
-        if (!dvmIsClassInitialized(clazz) && !dvmInitClass(clazz))
+        bool excep;
+#ifdef CHECK_STACK_INTEGRITY
+        CHECK_STACK_INTEGRITY(
+            excep = !dvmIsClassInitialized(clazz) && !dvmInitClass(clazz)
+        );
+#else
+        excep = !dvmIsClassInitialized(clazz) && !dvmInitClass(clazz);
+#endif
+        if (excep)
             GOTO_exceptionThrown();
 
 #if defined(WITH_JIT)

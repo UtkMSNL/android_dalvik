@@ -61,6 +61,12 @@ pid_t gettid() { return syscall(__NR_gettid);}
 // change this to ALOGV/ALOGD to debug thread activity
 #define LOG_THREAD  LOGVV
 
+#ifdef WITH_OFFLOAD
+#define CREATED_THREAD(thread)                                                \
+    (((thread)->threadId & 0x8000) == (gDvm.isServer ? 0x8000 : 0))
+#endif
+
+
 /*
 Notes on Threading
 
@@ -659,7 +665,7 @@ bool dvmPrepMainForJni(JNIEnv* pEnv)
 
     /* main thread is always first in list at this point */
     self = gDvm.threadList;
-    assert(self->threadId == kMainThreadId);
+    //assert(self->threadId == kMainThreadId);
 
     /* create a "fake" JNI frame at the top of the main thread interp stack */
     if (!createFakeEntryFrame(self))
@@ -692,7 +698,7 @@ bool dvmPrepMainThread()
 
     /* main thread is always first in list at this point */
     thread = gDvm.threadList;
-    assert(thread->threadId == kMainThreadId);
+    //assert(thread->threadId == kMainThreadId);
 
     /*
      * Make sure the classes are initialized.  We have to do this before
@@ -725,6 +731,9 @@ bool dvmPrepMainThread()
     }
     dvmReleaseTrackedAlloc(threadObj, NULL);
 
+#ifdef WITH_OFFLOAD
+    if (!gDvm.isServer) {
+#endif
     threadNameStr = dvmCreateStringFromCstr("main");
     if (threadNameStr == NULL)
         return false;
@@ -760,7 +769,12 @@ bool dvmPrepMainThread()
 
     /* set the VMThread.vmData field to our Thread struct */
     assert(gDvm.offJavaLangVMThread_vmData != 0);
+#ifdef WITH_OFFLOAD
+    dvmSetFieldInt(vmThreadObj, gDvm.offJavaLangVMThread_vmData,
+                   thread->threadId);
+#else
     dvmSetFieldInt(vmThreadObj, gDvm.offJavaLangVMThread_vmData, (u4)thread);
+#endif
 
     /*
      * Stuff the VMThread back into the Thread.  From this point on, other
@@ -769,6 +783,9 @@ bool dvmPrepMainThread()
      */
     dvmSetFieldObject(threadObj, gDvm.offJavaLangThread_vmThread,
         vmThreadObj);
+#ifdef WITH_OFFLOAD
+    } // !gDvm.isServer
+#endif
 
     thread->threadObj = threadObj;
 
@@ -871,6 +888,31 @@ static Thread* allocThread(int interpStackSize)
     /* One-time setup for interpreter/JIT state */
     dvmInitInterpreterState(thread);
 
+#ifdef WITH_OFFLOAD
+    thread->offDaemon = false;
+    thread->offGhost = gDvm.isServer && gDvm.initializing;
+    thread->offLocalOnly = true;
+    thread->offLocal = true;
+    thread->breakFrames = 0;
+    thread->migrationCounter = 0;
+    thread->offDeactivateBreakFrames = 0;
+    thread->offFlagMigration = false;
+    thread->offFlagDeath = false;
+    thread->offTrimSignaled = false;
+    thread->offSyncStackStop = NULL;
+    thread->offWriteBuffer = auxFifoCreate();
+    thread->offReadBuffer = auxFifoCreate();
+    thread->offTimeCounter = 0;
+    pthread_mutex_init(&thread->offBufferLock, NULL);
+    pthread_cond_init(&thread->offBufferCond, NULL);
+    thread->offCorkLevel = 0;
+    thread->offProtection = 0;
+
+    offSchedulerUnsafePoint(thread);
+
+    memset(thread->offLockList, 0, sizeof(thread->offLockList));
+#endif
+
     return thread;
 }
 
@@ -972,6 +1014,15 @@ static void freeThread(Thread* thread)
 {
     if (thread == NULL)
         return;
+
+#ifdef WITH_OFFLOAD
+    /* Remove this thread from the offloader's view. */
+    offThreadExited(thread);
+    auxFifoDestroy(&thread->offWriteBuffer);
+    auxFifoDestroy(&thread->offReadBuffer);
+    pthread_cond_destroy(&thread->offBufferCond);
+    pthread_mutex_destroy(&thread->offBufferLock);
+#endif
 
     /* thread->threadId is zero at this point */
     LOGVV("threadid=%d: freeing", thread->threadId);
@@ -1097,6 +1148,15 @@ static void threadExitCheck(void* arg)
  */
 static void assignThreadId(Thread* thread)
 {
+#ifdef WITH_OFFLOAD
+    Thread* pself = dvmThreadSelf();
+    if (pself && !pself->jniEnv) {
+        thread->threadId = pself->threadId;
+        assert(!CREATED_THREAD(thread));
+        return;
+    }
+#endif
+
     /*
      * Find a small unique integer.  threadIdMap is a vector of
      * kMaxThreadId bits;  dvmAllocBit() returns the index of a
@@ -1108,11 +1168,19 @@ static void assignThreadId(Thread* thread)
         dvmAbort();     // TODO: make this a non-fatal error result
     }
 
+#ifdef WITH_OFFLOAD
+    assert(((num + 1) << 1) < 0x8000);
+    thread->threadId = (gDvm.isServer ? 0x8000 : 0) |
+                       ((num + 1) << 1) | (thread->offDaemon ? 1 : 0);
+    offThreadCreatedLocal(thread);
+#else
     thread->threadId = num + 1;
+#endif
 
     assert(thread->threadId != 0);
 }
 
+#ifndef WITH_OFFLOAD
 /*
  * Give back the thread ID.
  */
@@ -1122,6 +1190,7 @@ static void releaseThreadId(Thread* thread)
     dvmClearBit(gDvm.threadIdMap, thread->threadId - 1);
     thread->threadId = 0;
 }
+#endif
 
 
 /*
@@ -1149,7 +1218,7 @@ static bool createFakeEntryFrame(Thread* thread)
      * it in FindClass.  The method is private so nobody else can call it.
      */
 
-    assert(thread->threadId == kMainThreadId);      /* main thread only */
+    //assert(thread->threadId == kMainThreadId);      /* main thread only */
 
     if (!dvmPushJNIFrame(thread, gDvm.methDalvikSystemNativeStart_main))
         return false;
@@ -1284,17 +1353,6 @@ bool dvmCreateInterpThread(Object* threadObj, int reqStackSize)
     }
 
     /*
-     * There are actually three data structures: Thread (object), VMThread
-     * (object), and Thread (C struct).  All of them point to at least one
-     * other.
-     *
-     * As soon as "VMThread.vmData" is assigned, other threads can start
-     * making calls into us (e.g. setPriority).
-     */
-    dvmSetFieldInt(vmThreadObj, gDvm.offJavaLangVMThread_vmData, (u4)newThread);
-    dvmSetFieldObject(threadObj, gDvm.offJavaLangThread_vmThread, vmThreadObj);
-
-    /*
      * Thread creation might take a while, so release the lock.
      */
     dvmUnlockThreadList();
@@ -1400,7 +1458,8 @@ bool dvmCreateInterpThread(Object* threadObj, int reqStackSize)
      */
     dvmLockThreadList(self);
     assert(self->status == THREAD_RUNNING);
-    self->status = THREAD_VMWAIT;
+    //self->status = THREAD_VMWAIT;
+    dvmChangeStatus(self, THREAD_VMWAIT);
     while (newThread->status != THREAD_STARTING)
         pthread_cond_wait(&gDvm.threadStartCond, &gDvm.threadListLock);
 
@@ -1421,6 +1480,22 @@ bool dvmCreateInterpThread(Object* threadObj, int reqStackSize)
 
     /* change status back to RUNNING, self-suspending if necessary */
     dvmChangeStatus(self, THREAD_RUNNING);
+
+    /*
+     * There are actually three data structures: Thread (object), VMThread
+     * (object), and Thread (C struct).  All of them point to at least one
+     * other.
+     *
+     * As soon as "VMThread.vmData" is assigned, other threads can start
+     * making calls into us (e.g. setPriority).
+     */
+#ifdef WITH_OFFLOAD
+    dvmSetFieldInt(vmThreadObj, gDvm.offJavaLangVMThread_vmData,
+                   (u4)newThread->threadId);
+#else
+    dvmSetFieldInt(vmThreadObj, gDvm.offJavaLangVMThread_vmData, (u4)newThread);
+#endif
+    dvmSetFieldObject(threadObj, gDvm.offJavaLangThread_vmThread, vmThreadObj);
 
     /*
      * Tell the new thread to start.
@@ -1476,6 +1551,11 @@ static void* interpThreadStart(void* arg)
     pthread_cond_broadcast(&gDvm.threadStartCond);
 
     /*
+     * Add a JNI context.
+     */
+    self->jniEnv = dvmCreateJNIEnv(self);
+
+    /*
      * Wait until the parent says we can go.  Assuming there wasn't a
      * suspend pending, this will happen immediately.  When it completes,
      * we're full-fledged citizens of the VM.
@@ -1492,11 +1572,6 @@ static void* interpThreadStart(void* arg)
         pthread_cond_wait(&gDvm.threadStartCond, &gDvm.threadListLock);
 
     dvmUnlockThreadList();
-
-    /*
-     * Add a JNI context.
-     */
-    self->jniEnv = dvmCreateJNIEnv(self);
 
     /*
      * Change our state so the GC will wait for us from now on.  If a GC is
@@ -1782,7 +1857,9 @@ bool dvmAttachCurrentThread(const JavaVMAttachArgs* pArgs, bool isDaemon)
     self = allocThread(gDvm.stackSize);
     if (self == NULL)
         goto fail;
-    setThreadSelf(self);
+#ifdef WITH_OFFLOAD
+    self->offDaemon = isDaemon;
+#endif
 
     /*
      * Finish our thread prep.  We need to do this before adding ourselves
@@ -1859,7 +1936,12 @@ bool dvmAttachCurrentThread(const JavaVMAttachArgs* pArgs, bool isDaemon)
      * tracked allocation table, so it can't move around on us.
      */
     self->threadObj = threadObj;
+#ifdef WITH_OFFLOAD
+    dvmSetFieldInt(vmThreadObj, gDvm.offJavaLangVMThread_vmData,
+                   self->threadId);
+#else
     dvmSetFieldInt(vmThreadObj, gDvm.offJavaLangVMThread_vmData, (u4)self);
+#endif
 
     /*
      * Create a string for the thread name.
@@ -1890,9 +1972,15 @@ bool dvmAttachCurrentThread(const JavaVMAttachArgs* pArgs, bool isDaemon)
      * provides values for priority and daemon (which are normally inherited
      * from the current thread).
      */
+#ifdef WITH_OFFLOAD
+    if (CREATED_THREAD(self)) {
+#endif
     JValue unused;
     dvmCallMethod(self, init, threadObj, &unused, (Object*)pArgs->group,
             threadNameStr, os_getThreadPriorityFromSystem(), isDaemon);
+#ifdef WITH_OFFLOAD
+    }
+#endif
     if (dvmCheckException(self)) {
         ALOGE("exception thrown while constructing attached thread object");
         goto fail_unlink;
@@ -1999,6 +2087,7 @@ void dvmDetachCurrentThread()
     Object* vmThread;
     Object* group;
 
+#ifndef WITH_OFFLOAD
     /*
      * Make sure we're not detaching a thread that's still running.  (This
      * could happen with an explicit JNI detach call.)
@@ -2026,6 +2115,12 @@ void dvmDetachCurrentThread()
             dvmAbort();
         }
     }
+#endif
+#ifdef WITH_OFFLOAD
+    if (!CREATED_THREAD(self)) {
+        offSyncPull();
+    }
+#endif
 
     group = dvmGetFieldObject(self->threadObj, gDvm.offJavaLangThread_group);
     LOG_THREAD("threadid=%d: detach (group=%p)", self->threadId, group);
@@ -2037,6 +2132,11 @@ void dvmDetachCurrentThread()
      */
     dvmReleaseJniMonitors(self);
 
+    vmThread = dvmGetFieldObject(self->threadObj,
+                    gDvm.offJavaLangThread_vmThread);
+#ifdef WITH_OFFLOAD
+    if (CREATED_THREAD(self)) {
+#endif
     /*
      * Do some thread-exit uncaught exception processing if necessary.
      */
@@ -2059,13 +2159,14 @@ void dvmDetachCurrentThread()
      * only reference to the VMThread object that the VM knows about, we
      * have to create an internal reference to it first.
      */
-    vmThread = dvmGetFieldObject(self->threadObj,
-                    gDvm.offJavaLangThread_vmThread);
     dvmAddTrackedAlloc(vmThread, self);
     dvmSetFieldObject(self->threadObj, gDvm.offJavaLangThread_vmThread, NULL);
 
     /* clear out our struct Thread pointer, since it's going away */
-    dvmSetFieldObject(vmThread, gDvm.offJavaLangVMThread_vmData, NULL);
+    dvmSetFieldInt(vmThread, gDvm.offJavaLangVMThread_vmData, 0);
+#ifdef WITH_OFFLOAD
+    }
+#endif
 
     /*
      * Tell the debugger & DDM.  This may cause the current thread or all
@@ -2078,6 +2179,9 @@ void dvmDetachCurrentThread()
     if (gDvm.debuggerConnected)
         dvmDbgPostThreadDeath(self);
 
+#ifdef WITH_OFFLOAD
+    if (CREATED_THREAD(self)) {
+#endif
     /*
      * Thread.join() is implemented as an Object.wait() on the VMThread
      * object.  Signal anyone who is waiting.
@@ -2088,6 +2192,9 @@ void dvmDetachCurrentThread()
 
     dvmReleaseTrackedAlloc(vmThread, self);
     vmThread = NULL;
+#ifdef WITH_OFFLOAD
+    }
+#endif
 
     /*
      * We're done manipulating objects, so it's okay if the GC runs in
@@ -2142,7 +2249,11 @@ void dvmDetachCurrentThread()
      * If we're the last one standing, signal anybody waiting in
      * DestroyJavaVM that it's okay to exit.
      */
+#ifdef WITH_OFFLOAD
+    if (~self->threadId & 0x1) { // Is not daemon?
+#else
     if (!dvmGetFieldBoolean(self->threadObj, gDvm.offJavaLangThread_daemon)) {
+#endif
         gDvm.nonDaemonThreadCount--;        // guarded by thread list lock
 
         if (gDvm.nonDaemonThreadCount == 0) {
@@ -2161,12 +2272,14 @@ void dvmDetachCurrentThread()
     }
 
     ALOGV("threadid=%d: bye!", self->threadId);
+#ifndef WITH_OFFLOAD
     releaseThreadId(self);
+#endif
     dvmUnlockThreadList();
 
-    setThreadSelf(NULL);
-
     freeThread(self);
+
+    setThreadSelf(NULL);
 }
 
 
@@ -3039,6 +3152,9 @@ Thread* dvmGetThreadFromThreadObject(Object* vmThreadObj)
 
     vmData = dvmGetFieldInt(vmThreadObj, gDvm.offJavaLangVMThread_vmData);
 
+#ifdef WITH_OFFLOAD
+    return offIdToThread(vmData);
+#else
     if (false) {
         Thread* thread = gDvm.threadList;
         while (thread != NULL) {
@@ -3056,6 +3172,7 @@ Thread* dvmGetThreadFromThreadObject(Object* vmThreadObj)
     }
 
     return (Thread*) vmData;
+#endif
 }
 
 /*
@@ -3082,12 +3199,16 @@ Thread* dvmGetThreadByHandle(pthread_t handle)
  */
 Thread* dvmGetThreadByThreadId(u4 threadId)
 {
+#ifdef WITH_OFFLOAD
+    return offIdToThread(threadId);
+#else
     Thread* thread;
     for (thread = gDvm.threadList; thread != NULL; thread = thread->next) {
         if (thread->threadId == threadId)
             break;
     }
     return thread;
+#endif
 }
 
 void dvmChangeThreadPriority(Thread* thread, int newPriority)
@@ -3571,3 +3692,83 @@ void dvmNukeThread(Thread* thread)
     signal(SIGSEGV, SIG_IGN);
     ALOGD("Continuing");
 }
+
+#ifdef WITH_MONITOR_TRACKING
+/*
+ * Add the object to the thread's locked object list if it doesn't already
+ * exist.  The most recently added object is the most likely to be released
+ * next, so we insert at the head of the list.
+ *
+ * If it already exists, we increase the recursive lock count.
+ *
+ * The object's lock may be thin or fat.
+ */
+void dvmAddToMonitorList(Thread* self, Object* obj)
+{
+    LockedObjectData* newLod;
+    LockedObjectData* lod;
+
+    lod = self->pLockedObjects;
+    while (lod != NULL) {
+        if (lod->obj == obj) {
+            lod->recursionCount++;
+            ALOGV("+++ +recursive lock %p -> %d\n", obj, lod->recursionCount);
+            return;
+        }
+        lod = lod->next;
+    }
+
+    newLod = (LockedObjectData*) calloc(1, sizeof(LockedObjectData));
+    if (newLod == NULL) {
+        ALOGE("malloc failed on %d bytes\n", sizeof(LockedObjectData));
+        return;
+    }
+    newLod->obj = obj;
+    newLod->recursionCount = 0;
+
+    newLod->next = self->pLockedObjects;
+    self->pLockedObjects = newLod;
+}
+
+/*
+ * Remove the object from the thread's locked object list.  If the entry
+ * has a nonzero recursion count, we just decrement the count instead.
+ */
+void dvmRemoveFromMonitorList(Thread* self, Object* obj)
+{
+    LockedObjectData* lod;
+    LockedObjectData* prevLod;
+
+    lod = self->pLockedObjects;
+    prevLod = NULL;
+    while (lod != NULL) {
+        if (lod->obj == obj) {
+            if (lod->recursionCount > 0) {
+                lod->recursionCount--;
+                ALOGV("+++ -recursive lock %p -> %d\n",
+                    obj, lod->recursionCount);
+                return;
+            } else {
+                break;
+            }
+        }
+        prevLod = lod;
+        lod = lod->next;
+    }
+
+    if (lod == NULL) {
+        ALOGW("BUG: object %p not found in thread's lock list\n", obj);
+        return;
+    }
+    if (prevLod == NULL) {
+        /* first item in list */
+        assert(self->pLockedObjects == lod);
+        self->pLockedObjects = lod->next;
+    } else {
+        /* middle/end of list */
+        prevLod->next = lod->next;
+    }
+
+    free(lod);
+}
+#endif  // WITH_MONITOR_TRACKING

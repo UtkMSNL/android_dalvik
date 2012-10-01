@@ -20,6 +20,10 @@
 #ifndef DALVIK_COMMON_H_
 #define DALVIK_COMMON_H_
 
+#ifdef WITH_OFFLOAD
+#define COMM_INVALID_ID 0xFFFFFFFFU
+#endif
+
 #ifndef LOG_TAG
 # define LOG_TAG "dalvikvm"
 #endif
@@ -44,9 +48,10 @@
 
 #if !defined(NDEBUG) && defined(WITH_DALVIK_ASSERT)
 # undef assert
+void __fail(int x);
 # define assert(x) \
     ((x) ? ((void)0) : (ALOGE("ASSERT FAILED (%s:%d): %s", \
-        __FILE__, __LINE__, #x), *(int*)39=39, (void)0) )
+        __FILE__, __LINE__, #x), __fail(39), (void)0) )
 #endif
 
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))

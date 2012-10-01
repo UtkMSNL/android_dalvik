@@ -32,6 +32,11 @@ int pthread_mutexattr_settype(pthread_mutexattr_t *attr, int type);
 enum { PTHREAD_MUTEX_ERRORCHECK = PTHREAD_MUTEX_ERRORCHECK_NP };
 #endif
 
+#ifdef WITH_MONITOR_TRACKING
+struct LockedObjectData;
+#endif
+
+
 /*
  * Current status; these map to JDWP constants, so don't rearrange them.
  * (If you do alter this, update the strings in dvmDumpThread and the
@@ -283,6 +288,11 @@ struct Thread {
     /* JDWP invoke-during-breakpoint support */
     DebugInvokeReq  invokeReq;
 
+#ifdef WITH_MONITOR_TRACKING
+    /* objects locked by this thread; most recent is at head of list */
+    struct LockedObjectData* pLockedObjects;
+#endif
+
     /* base time for per-thread CPU timing (used by method profiling) */
     bool        cpuClockBaseSet;
     u8          cpuClockBase;
@@ -303,6 +313,42 @@ struct Thread {
     pthread_mutex_t   callbackMutex;
     SafePointCallback callback;
     void*             callbackArg;
+
+#ifdef WITH_OFFLOAD
+    u4               breakFrames;
+    u4               migrationCounter;
+    u4               offDeactivateBreakFrames;
+    bool             offFlagMigration; /* Should we migrate on next safe sync
+                                        * point. */
+    bool             offDaemon;
+    bool             offGhost;         /* Should we hide the thread from other
+                                        * endpoints. */
+    bool             offLocalOnly;     /* Is the thread unknown to other
+                                        * endpoints. */
+    bool             offLocal;         /* Is the thread running locally. */
+    bool             offFlagDeath;
+    bool             offTrimSignaled;
+    void*            offSyncStackStop;
+
+    u4               offTimeCounter;
+    u8               offUnsafeTime;    /* Indicates last time execution had to
+                                          be local.  Only used for client. */
+
+    Object*          offLockList[16];  /* Recently locked object ids. */
+
+    /* Used for communication between parallel threads. */
+    FifoBuffer       offWriteBuffer;
+    FifoBuffer       offReadBuffer;
+    pthread_mutex_t  offBufferLock;
+    pthread_cond_t   offBufferCond;
+    u4               offCorkLevel;
+
+    u4               offProtection;
+#endif
+
+#ifdef OFFLOAD_DEBUG
+    u4               offSuspendCounter;
+#endif
 };
 
 /* start point for an internal thread; mimics pthread args */
@@ -598,5 +644,23 @@ void dvmDumpAllThreadsEx(const DebugOutputTarget* target, bool grabLock);
  * in an uncertain state.
  */
 void dvmNukeThread(Thread* thread);
+
+#ifdef WITH_MONITOR_TRACKING
+typedef struct LockedObjectData {
+    /* the locked object */
+    struct Object*  obj;
+
+    /* number of times it has been locked recursively (zero-based ref count) */
+    int             recursionCount;
+
+    struct LockedObjectData* next;
+} LockedObjectData;
+
+/*
+ * Add/remove/find objects from the thread's monitor list.
+ */
+void dvmAddToMonitorList(Thread* self, Object* obj);
+void dvmRemoveFromMonitorList(Thread* self, Object* obj);
+#endif  // WITH_MONITOR_TRACKING
 
 #endif  // DALVIK_THREAD_H_

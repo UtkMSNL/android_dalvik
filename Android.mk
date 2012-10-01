@@ -17,6 +17,7 @@ LOCAL_PATH := $(call my-dir)
 subdirs := $(addprefix $(LOCAL_PATH)/,$(addsuffix /Android.mk, \
 		libdex \
 		vm \
+		cometmanager \
 		dalvikvm \
 		dexgen \
 		dexlist \
@@ -24,6 +25,7 @@ subdirs := $(addprefix $(LOCAL_PATH)/,$(addsuffix /Android.mk, \
 		dexdump \
 		dvz \
 		dx \
+		tcpmux \
 		tools \
 		unit-tests \
 	))

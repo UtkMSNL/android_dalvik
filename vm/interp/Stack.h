@@ -150,6 +150,9 @@ struct StackSaveArea {
 #ifdef PAD_SAVE_AREA
     u4          pad3, pad4, pad5;
 #endif
+#if defined(WITH_OFFLOAD) && !defined(EASY_GDB)
+    u4 pad6;
+#endif
 };
 
 /* move between the stack save area and the frame pointer */

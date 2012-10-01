@@ -496,12 +496,33 @@ static inline bool checkForNullExportPC(Object* obj, u4* fp, const u2* pc)
  * While we're at it, see if a debugger has attached or the profiler has
  * started.
  */
+#ifdef WITH_OFFLOAD
+#define PERIODIC_CHECKS(_pcadj) {                              \
+        if (dvmCheckSuspendQuick(self)) {                                   \
+            EXPORT_PC();  /* need for precise GC */                         \
+            dvmCheckSuspendPending(self);                                   \
+        }                                                                   \
+        if (self->offFlagMigration) {                                       \
+            self->offFlagMigration = false;                                 \
+            offMigrateThread(self);                                         \
+            const StackSaveArea* saveArea = SAVEAREA_FROM_FP(self->interpSave.curFrame);\
+            curMethod = saveArea->method;                                   \
+            fp = (u4*) self->interpSave.curFrame;                           \
+            pc = saveArea->savedPc;                                         \
+            methodClassDex = curMethod->clazz->pDvmDex;                     \
+            if (dvmCheckException(self)) {                                  \
+                GOTO_exceptionThrown();                                     \
+            }                                                               \
+        }                                                                   \
+    }
+#else
 #define PERIODIC_CHECKS(_pcadj) {                              \
         if (dvmCheckSuspendQuick(self)) {                                   \
             EXPORT_PC();  /* need for precise GC */                         \
             dvmCheckSuspendPending(self);                                   \
         }                                                                   \
     }
+#endif
 
 /* File: c/opcommon.cpp */
 /* forward declarations of goto targets */
@@ -968,6 +989,15 @@ GOTO_TARGET_DECL(exceptionThrown);
     }                                                                       \
     FINISH(2);
 
+#ifdef WITH_OFFLOAD
+#define OFFLOAD_APUT(_aobj, _index) do {                                    \
+        u4 index = (_index);                                                \
+        offTrackArrayWrite(_aobj, index, index + 1);                        \
+    } while(0)
+#else
+#define OFFLOAD_APUT(__aobj, __index)
+#endif
+
 #define HANDLE_OP_APUT(_opcode, _opname, _type, _regsize)                   \
     HANDLE_OPCODE(_opcode /*vAA, vBB, vCC*/)                                \
     {                                                                       \
@@ -990,6 +1020,7 @@ GOTO_TARGET_DECL(exceptionThrown);
         ILOGV("+ APUT[%d]=0x%08x", GET_REGISTER(vsrc2), GET_REGISTER(vdst));\
         ((_type*)(void*)arrayObj->contents)[GET_REGISTER(vsrc2)] =          \
             GET_REGISTER##_regsize(vdst);                                   \
+        OFFLOAD_APUT(arrayObj, GET_REGISTER(vsrc2));                        \
     }                                                                       \
     FINISH(2);
 

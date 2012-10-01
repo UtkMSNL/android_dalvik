@@ -209,6 +209,13 @@ struct Object {
     /* ptr to class object */
     ClassObject*    clazz;
 
+#if defined(WITH_OFFLOAD)
+    /* The object's unique identifier if assigned.
+     */
+    u4 objId;
+    u4 junk;
+#endif
+
     /*
      * A word containing either a "thin" lock or a "fat" monitor.  See
      * the comments in Sync.c for a description of its layout.
@@ -220,8 +227,16 @@ struct Object {
  * Properly initialize an Object.
  * void DVM_OBJECT_INIT(Object *obj, ClassObject *clazz_)
  */
+#ifdef WITH_OFFLOAD
+#define DVM_OBJECT_INIT(obj, clazz_)                                    \
+    do {                                                                \
+        (obj)->objId = COMM_INVALID_ID;                                 \
+        dvmSetFieldObject(obj, OFFSETOF_MEMBER(Object, clazz), clazz_); \
+    } while (0)
+#else
 #define DVM_OBJECT_INIT(obj, clazz_) \
     dvmSetFieldObject(obj, OFFSETOF_MEMBER(Object, clazz), clazz_)
+#endif
 
 /*
  * Data objects have an Object header followed by their instance data.
@@ -304,6 +319,11 @@ struct Field {
     const char*     name;
     const char*     signature;      /* e.g. "I", "[C", "Landroid/os/Debug;" */
     u4              accessFlags;
+#if defined(WITH_OFFLOAD) || defined(WITH_TRACER)
+    /* The index back into the pDvmDex file. */
+    u4 idx;
+    u4 pad; // Just trying to keep 8 aligned.
+#endif
 };
 
 /*
@@ -469,6 +489,16 @@ struct ClassObject : Object {
     /* source file name, if known */
     const char*     sourceFile;
 
+#if defined(WITH_OFFLOAD) || defined(WITH_TRACER)
+    /* The index back into the pDvmDex file. */
+    u4 idx;
+#endif
+
+#ifdef WITH_OFFLOAD
+    /* Extra offload related data. */
+    ObjectInfo offInfo;
+#endif
+
     /* static fields */
     int             sfieldCount;
     StaticField     sfields[0]; /* MUST be last item */
@@ -580,6 +610,11 @@ struct Method {
 
     /* set if method was called during method profiling */
     bool            inProfile;
+
+#if defined(WITH_OFFLOAD) || defined(WITH_TRACER)
+    /* The index back into the pDvmDex file. */
+    u4 idx;
+#endif
 };
 
 

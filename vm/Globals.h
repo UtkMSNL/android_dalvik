@@ -726,6 +726,84 @@ struct DvmGlobals {
 
     /* String pointed here will be deposited on the stack frame of dvmAbort */
     const char *lastMessage;
+
+#ifdef WITH_OFFLOAD
+    pthread_t       offControlThread;
+
+    bool isServer;
+    volatile bool offConnected;
+    volatile bool offControlShutdown;
+
+    struct addrinfo* offTransportAddr;
+    struct addrinfo* offDiagnosticAddr;
+
+    pthread_mutex_t offNetStatLock;
+    u8 offNetStatTime;
+    u4 offNetRTT;
+    u4 offNetRTTVar;
+
+    int offNetPipe[2];
+
+    // offload/Comm.h
+    u4 nextId;
+    u4 idMask;
+    UnlockedInfoTable objTables[2];
+    pthread_mutex_t offCommLock;
+    pthread_cond_t offPullCond;
+    Vector offWriteQueue;
+    u4 offRecvRevision;
+    u4 offSendRevision;
+
+    pthread_mutex_t offProxyLock;
+    FifoBuffer      offProxyFifo;
+    FifoBuffer      offProxyFifoAll;
+
+    Vector offStatusUpdate;
+
+    // offload/Engine.h
+    bool            offDisabled;
+
+    // offload/Threading.h
+    pthread_mutex_t offThreadLock;
+    pthread_cond_t  offThreadCreateCond;
+    HashTable*      offThreadTable;
+
+    // offload/DexLoader.h
+    u4              dexBootstrapCount;
+    pthread_mutex_t dexLoadLock;
+    pthread_cond_t  dexPushedCond;
+    Vector          dexList;
+    Vector          dexPushList;
+    bool            dexPushing;
+
+    // offload/Sync.h
+    pthread_mutex_t offVolatileLock;
+
+    // GC stuff
+    Thread gcThreadContext; // This is not a real thread
+
+    // offload/Methodrules.h
+    HashTable* offRulesHash;
+    Method* offMethWriteImpl;
+    Method* offMethLogNative;
+
+    // offload/Recovery.h
+    bool            offRecovered;
+    u4              offRecoveryHazards;
+    pthread_mutex_t offRecoveryLock;
+    pthread_cond_t  offRecoveryCond;
+
+    // offload/SchedulerInlines.h
+    u4              offSyncTime;
+    u4              offSyncTimeSamples;
+#endif
+
+#ifdef WITH_TRACER
+    int             trTraceFd;
+    u4              trTraceSize;
+    Vector          trDexList;
+    pthread_mutex_t trTraceLock;
+#endif
 };
 
 extern struct DvmGlobals gDvm;

@@ -51,6 +51,49 @@ void dvmNativeShutdown()
     gDvm.nativeLibs = NULL;
 }
 
+#ifdef WITH_OFFLOAD
+static
+void hookInternalNative(const u4* args, JValue* pResult,
+                        const Method* method, Thread* self) {
+    DalvikBridgeFunc dfunc = (DalvikBridgeFunc)method->insns;
+    if (dfunc) {
+        if (~method->accessFlags & ACC_OFFLOADABLE) {
+            offSchedulerUnsafePoint(self);
+        }
+        dfunc(args, pResult, method, self);
+        if (~method->accessFlags & ACC_OFFLOADABLE) {
+            offSchedulerUnsafePoint(self);
+        }
+    } else if(method == gDvm.offMethLogNative) {
+        StringObject* tagStr = (StringObject*)args[2];
+        StringObject* msgStr = (StringObject*)args[3];
+        if(tagStr && msgStr) {
+            char* stag = dvmCreateCstrFromString(tagStr);
+            char* smsg = dvmCreateCstrFromString(msgStr);
+            ALOGI("LOG %s: %s", stag, smsg);
+            pResult->i = strlen(stag) + strlen(smsg) + 6;
+            free(stag); free(smsg);
+        } else {
+            pResult->i = 0;
+        }
+    } else {
+        dvmThrowUnsatisfiedLinkError(method->name);
+    }
+}
+#endif
+#ifdef WITH_TRACER
+static
+void hookInternalNative(const u4* args, JValue* pResult,
+                        const Method* method, Thread* self) {
+    trTraceNative(method);
+    DalvikBridgeFunc dfunc = (DalvikBridgeFunc)method->insns;
+    if (dfunc) {
+        dfunc(args, pResult, method, self);
+    } else {
+        dvmThrowUnsatisfiedLinkError(method->name);
+    }
+}
+#endif
 
 /*
  * Resolve a native method and invoke it.
@@ -101,9 +144,16 @@ void dvmResolveNativeMethod(const u4* args, JValue* pResult,
             ALOGE("Failing on %s.%s", method->clazz->descriptor, method->name);
             dvmAbort();     // harsh, but this is VM-internal problem
         }
+#if defined(WITH_OFFLOAD) || defined(WITH_TRACER)
+        /* We want to interpose ourselves between even internal native calls. */
+        dvmSetNativeFunc((Method*)method, hookInternalNative,
+                         (const u2*)infunc);
+        hookInternalNative(args, pResult, method, self);
+#else
         DalvikBridgeFunc dfunc = (DalvikBridgeFunc) infunc;
         dvmSetNativeFunc((Method*) method, dfunc, NULL);
         dfunc(args, pResult, method, self);
+#endif
         return;
     }
 
@@ -116,6 +166,10 @@ void dvmResolveNativeMethod(const u4* args, JValue* pResult,
         return;
     }
 
+#if defined(WITH_OFFLOAD)
+    dvmSetNativeFunc((Method*)method, hookInternalNative, NULL);
+    hookInternalNative(args, pResult, method, self);
+#else
     IF_ALOGW() {
         char* desc = dexProtoCopyMethodDescriptor(&method->prototype);
         ALOGW("No implementation found for native %s.%s:%s",
@@ -124,6 +178,7 @@ void dvmResolveNativeMethod(const u4* args, JValue* pResult,
     }
 
     dvmThrowUnsatisfiedLinkError("Native method not found", method);
+#endif
 }
 
 
@@ -384,6 +439,9 @@ bool dvmLoadNativeCode(const char* pathName, Object* classLoader,
     dvmChangeStatus(self, oldStatus);
 
     if (handle == NULL) {
+#ifdef WITH_OFFLOAD
+        if (gDvm.isServer) return true;
+#endif
         *detail = strdup(dlerror());
         return false;
     }

@@ -531,6 +531,10 @@ void dvmCollectGarbageInternal(const GcSpec* spec)
     LOGD_HEAP("Recursing...");
     dvmHeapScanMarkedObjects();
 
+#ifdef WITH_OFFLOAD
+    offGcMarkOffloadRefs(spec, false);
+#endif
+
     if (spec->isConcurrent) {
         /*
          * Re-acquire the heap lock and perform the final thread
@@ -556,6 +560,9 @@ void dvmCollectGarbageInternal(const GcSpec* spec)
          * heap objects dirtied during the concurrent mark.
          */
         dvmHeapReScanMarkedObjects();
+#ifdef WITH_OFFLOAD
+        offGcMarkOffloadRefs(spec, true);
+#endif
     }
 
     /*

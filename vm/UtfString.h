@@ -42,10 +42,15 @@
 # define STRING_FIELDOFF_COUNT      gDvm.offJavaLangString_count
 # define STRING_FIELDOFF_HASHCODE   gDvm.offJavaLangString_hashCode
 #else
-# define STRING_FIELDOFF_VALUE      8
-# define STRING_FIELDOFF_HASHCODE   12
-# define STRING_FIELDOFF_OFFSET     16
-# define STRING_FIELDOFF_COUNT      20
+#if defined(WITH_OFFLOAD)
+#define OBJIDOFF 8
+#else
+#define OBJIDOFF 0
+#endif
+# define STRING_FIELDOFF_VALUE      (8  + OBJIDOFF)
+# define STRING_FIELDOFF_HASHCODE   (12 + OBJIDOFF)
+# define STRING_FIELDOFF_OFFSET     (16 + OBJIDOFF)
+# define STRING_FIELDOFF_COUNT      (20 + OBJIDOFF)
 #endif
 
 /*
@@ -136,5 +141,4 @@ void dvmGetStringUtfRegion(const StringObject* jstr,
  * Compare two string objects.  (This is a dvmHashTableLookup() callback.)
  */
 int dvmHashcmpStrings(const void* vstrObj1, const void* vstrObj2);
-
 #endif  // DALVIK_STRING_H_

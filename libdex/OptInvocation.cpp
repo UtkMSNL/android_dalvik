@@ -115,6 +115,7 @@ char* dexOptGenerateCacheFileName(const char* fileName, const char* subFileName)
     if (systemRoot == NULL)
         systemRoot = "/system";
 
+    dexRoot = dataRoot;
     if (dexRoot == NULL)
         dexRoot = "/data";
 

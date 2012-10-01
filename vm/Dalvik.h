@@ -22,6 +22,17 @@
 
 #include "Common.h"
 #include "Inlines.h"
+
+#if defined(WITH_OFFLOAD)
+#include "auxiliary/Vector.h"
+#include "auxiliary/Queue.h"
+#include "auxiliary/FifoBuffer.h"
+#include "offload/Comm.h"
+#endif
+#if defined(WITH_TRACER)
+#include "auxiliary/Vector.h"
+#endif
+
 #include "Misc.h"
 #include "Bits.h"
 #include "BitVector.h"
@@ -76,12 +87,37 @@
 #if defined(WITH_JIT)
 #include "compiler/Compiler.h"
 #endif
+#if defined(WITH_OFFLOAD)
+#include "auxiliary/Comm.h"
+#include "auxiliary/Lookup.h"
+#include "auxiliary/Types.h"
+#include "offload/Control.h"
+#include "offload/Engine.h"
+#include "offload/Threading.h"
+#include "offload/Sync.h"
+#include "offload/DexLoader.h"
+#include "offload/Lookup.h"
+#include "offload/UnlockedInfoTable.h"
+#include "offload/Stack.h"
+#include "offload/MethodRules.h"
+#include "offload/Recovery.h"
+#endif
 #include "Globals.h"
 #include "reflect/Reflect.h"
 #include "oo/TypeCheck.h"
 #include "Atomic.h"
 #include "interp/Interp.h"
 #include "InlineNative.h"
+
+#ifdef WITH_OFFLOAD
+#include "offload/CommInlines.h"
+#include "offload/SchedulerInlines.h"
+#endif
+#if defined(WITH_TRACER)
+#include "tracer/DexLoader.h"
+#include "tracer/Tracer.h"
+#endif
+
 #include "oo/ObjectInlines.h"
 
 #endif  // DALVIK_DALVIK_H_

@@ -254,6 +254,9 @@ static void Dalvik_dalvik_system_Zygote_fork(const u4* args, JValue* pResult)
 
 #ifdef HAVE_ANDROID_OS
     if (pid == 0) {
+#ifdef WITH_TRACER
+        trTraceForked(getuid());
+#endif
         /* child process */
         extern int gMallocLeakZygoteChild;
         gMallocLeakZygoteChild = 1;
@@ -467,6 +470,10 @@ static pid_t forkAndSpecializeCommon(const u4* args, bool isSystemServer)
     if (pid == 0) {
         int err;
         /* The child process */
+
+#ifdef WITH_TRACER
+        trTraceForked(uid);
+#endif
 
 #ifdef HAVE_ANDROID_OS
         extern int gMallocLeakZygoteChild;

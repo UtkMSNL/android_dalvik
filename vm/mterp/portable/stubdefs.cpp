@@ -68,6 +68,54 @@
 
 #define GOTO_bail() goto bail;
 
+#ifdef WITH_OFFLOAD
+#define CHECK_FOR_MIGRATE() do {                                            \
+        if (self->offFlagMigration) {                                       \
+            EXPORT_PC();                                                    \
+            u4 breakFrames = self->breakFrames;                             \
+            self->offFlagMigration = false;                                 \
+            offMigrateThread(self);                                         \
+            if (self->offFlagDeath || self->breakFrames < breakFrames) {    \
+                GOTO_bail();                                                \
+            }                                                               \
+            const StackSaveArea* saveArea = SAVEAREA_FROM_FP(self->interpSave.curFrame);\
+            self->interpSave.method = curMethod = saveArea->method;         \
+            fp = (u4*) self->interpSave.curFrame;                           \
+            pc = saveArea->xtra.currentPc;                                  \
+            methodClassDex = curMethod->clazz->pDvmDex;                     \
+            if (dvmCheckException(self)) {                                  \
+                GOTO_exceptionThrown();                                     \
+            }                                                               \
+            FINISH(0);                                                      \
+        }                                                                   \
+    } while(0)
+#define SCHEDULER_SAFE_POINT() offSchedulerSafePoint(self)
+#define CHECK_STACK_INTEGRITY_DO(x) do {                                    \
+        u4 breakFrames = self->breakFrames;                                 \
+        u4 migrationCounter = self->migrationCounter;                       \
+        {(x);}                                                              \
+        if (migrationCounter == self->migrationCounter) {                   \
+            break;                                                          \
+        }                                                                   \
+        if (self->offFlagDeath || self->breakFrames < breakFrames) {        \
+            GOTO_bail();                                                    \
+        }                                                                   \
+        const StackSaveArea* saveArea = SAVEAREA_FROM_FP(self->interpSave.curFrame);   \
+        self->interpSave.method = curMethod = saveArea->method;             \
+        fp = (u4*) self->interpSave.curFrame;                               \
+        pc = saveArea->xtra.currentPc;                                      \
+        methodClassDex = curMethod->clazz->pDvmDex;                         \
+        if (dvmCheckException(self)) {                                      \
+            GOTO_exceptionThrown();                                         \
+        }                                                                   \
+        FINISH(0);                                                          \
+    } while(0)
+#else
+#define CHECK_FOR_MIGRATE()
+#define SCHEDULER_SAFE_POINT()
+#define CHECK_STACK_INTEGRITY_DO(x) {(x);}
+#endif
+
 /*
  * Periodically check for thread suspension.
  *
@@ -79,4 +127,6 @@
             EXPORT_PC();  /* need for precise GC */                         \
             dvmCheckSuspendPending(self);                                   \
         }                                                                   \
+        SCHEDULER_SAFE_POINT();                                             \
+        CHECK_FOR_MIGRATE();                                                \
     }

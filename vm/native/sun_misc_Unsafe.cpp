@@ -71,7 +71,9 @@ static void Dalvik_sun_misc_Unsafe_compareAndSwapInt(const u4* args,
 
     // Note: android_atomic_release_cas() returns 0 on success, not failure.
     int result = android_atomic_release_cas(expectedValue, newValue, address);
-
+#ifdef WITH_OFFLOAD
+    offTrackInstanceWriteVolatile(obj, offset);
+#endif
     RETURN_BOOLEAN(result == 0);
 }
 
@@ -92,7 +94,9 @@ static void Dalvik_sun_misc_Unsafe_compareAndSwapLong(const u4* args,
     // Note: android_atomic_cmpxchg() returns 0 on success, not failure.
     int result =
         dvmQuasiAtomicCas64(expectedValue, newValue, address);
-
+#ifdef WITH_OFFLOAD
+    offTrackInstanceWriteVolatile(obj, offset);
+#endif
     RETURN_BOOLEAN(result == 0);
 }
 
@@ -114,6 +118,9 @@ static void Dalvik_sun_misc_Unsafe_compareAndSwapObject(const u4* args,
     int result = android_atomic_release_cas((int32_t) expectedValue,
             (int32_t) newValue, address);
     dvmWriteBarrierField(obj, address);
+#ifdef WITH_OFFLOAD
+    offTrackInstanceWriteVolatile(obj, offset);
+#endif
     RETURN_BOOLEAN(result == 0);
 }
 
@@ -127,6 +134,10 @@ static void Dalvik_sun_misc_Unsafe_getIntVolatile(const u4* args,
     Object* obj = (Object*) args[1];
     s8 offset = GET_ARG_LONG(args, 2);
     volatile int32_t* address = (volatile int32_t*) (((u1*) obj) + offset);
+
+#ifdef WITH_OFFLOAD
+    offPrepInstanceReadVolatile(obj, offset);
+#endif
 
     int32_t value = android_atomic_acquire_load(address);
     RETURN_INT(value);
@@ -145,6 +156,9 @@ static void Dalvik_sun_misc_Unsafe_putIntVolatile(const u4* args,
     volatile int32_t* address = (volatile int32_t*) (((u1*) obj) + offset);
 
     android_atomic_release_store(value, address);
+#ifdef WITH_OFFLOAD
+    offTrackInstanceWriteVolatile(obj, offset);
+#endif
     RETURN_VOID();
 }
 
@@ -158,6 +172,10 @@ static void Dalvik_sun_misc_Unsafe_getLongVolatile(const u4* args,
     Object* obj = (Object*) args[1];
     s8 offset = GET_ARG_LONG(args, 2);
     volatile int64_t* address = (volatile int64_t*) (((u1*) obj) + offset);
+
+#ifdef WITH_OFFLOAD
+    offPrepInstanceReadVolatile(obj, offset);
+#endif
 
     assert((offset & 7) == 0);
     RETURN_LONG(dvmQuasiAtomicRead64(address));
@@ -177,6 +195,9 @@ static void Dalvik_sun_misc_Unsafe_putLongVolatile(const u4* args,
 
     assert((offset & 7) == 0);
     dvmQuasiAtomicSwap64(value, address);
+#ifdef WITH_OFFLOAD
+    offTrackInstanceWriteVolatile(obj, offset);
+#endif
     RETURN_VOID();
 }
 
@@ -190,6 +211,10 @@ static void Dalvik_sun_misc_Unsafe_getObjectVolatile(const u4* args,
     Object* obj = (Object*) args[1];
     s8 offset = GET_ARG_LONG(args, 2);
     volatile int32_t* address = (volatile int32_t*) (((u1*) obj) + offset);
+
+#ifdef WITH_OFFLOAD
+    offPrepInstanceReadVolatile(obj, offset);
+#endif
 
     RETURN_PTR((Object*) android_atomic_acquire_load(address));
 }
@@ -209,6 +234,9 @@ static void Dalvik_sun_misc_Unsafe_putObjectVolatile(const u4* args,
 
     android_atomic_release_store((int32_t)value, address);
     dvmWriteBarrierField(obj, (void *)address);
+#ifdef WITH_OFFLOAD
+    offTrackInstanceWriteVolatile(obj, offset);
+#endif
     RETURN_VOID();
 }
 
@@ -237,6 +265,9 @@ static void Dalvik_sun_misc_Unsafe_putInt(const u4* args, JValue* pResult)
     s4* address = (s4*) (((u1*) obj) + offset);
 
     *address = value;
+#ifdef WITH_OFFLOAD
+    offTrackInstanceWrite(obj, offset);
+#endif
     RETURN_VOID();
 }
 
@@ -254,6 +285,9 @@ static void Dalvik_sun_misc_Unsafe_putOrderedInt(const u4* args,
 
     ANDROID_MEMBAR_STORE();
     *address = value;
+#ifdef WITH_OFFLOAD
+    offTrackInstanceWrite(obj, offset);
+#endif
     RETURN_VOID();
 }
 
@@ -282,6 +316,9 @@ static void Dalvik_sun_misc_Unsafe_putLong(const u4* args, JValue* pResult)
     s8* address = (s8*) (((u1*) obj) + offset);
 
     *address = value;
+#ifdef WITH_OFFLOAD
+    offTrackInstanceWrite(obj, offset);
+#endif
     RETURN_VOID();
 }
 
@@ -299,6 +336,9 @@ static void Dalvik_sun_misc_Unsafe_putOrderedLong(const u4* args,
 
     ANDROID_MEMBAR_STORE();
     *address = value;
+#ifdef WITH_OFFLOAD
+    offTrackInstanceWrite(obj, offset);
+#endif
     RETURN_VOID();
 }
 
@@ -328,6 +368,9 @@ static void Dalvik_sun_misc_Unsafe_putObject(const u4* args, JValue* pResult)
 
     *address = value;
     dvmWriteBarrierField(obj, address);
+#ifdef WITH_OFFLOAD
+    offTrackInstanceWrite(obj, offset);
+#endif
     RETURN_VOID();
 }
 
@@ -347,6 +390,9 @@ static void Dalvik_sun_misc_Unsafe_putOrderedObject(const u4* args,
     ANDROID_MEMBAR_STORE();
     *address = value;
     dvmWriteBarrierField(obj, address);
+#ifdef WITH_OFFLOAD
+    offTrackInstanceWrite(obj, offset);
+#endif
     RETURN_VOID();
 }
 

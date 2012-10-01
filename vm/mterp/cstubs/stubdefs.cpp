@@ -126,9 +126,30 @@
  * While we're at it, see if a debugger has attached or the profiler has
  * started.
  */
+#ifdef WITH_OFFLOAD
+#define PERIODIC_CHECKS(_pcadj) {                              \
+        if (dvmCheckSuspendQuick(self)) {                                   \
+            EXPORT_PC();  /* need for precise GC */                         \
+            dvmCheckSuspendPending(self);                                   \
+        }                                                                   \
+        if (self->offFlagMigration) {                                       \
+            self->offFlagMigration = false;                                 \
+            offMigrateThread(self);                                         \
+            const StackSaveArea* saveArea = SAVEAREA_FROM_FP(self->interpSave.curFrame);\
+            curMethod = saveArea->method;                                   \
+            fp = (u4*) self->interpSave.curFrame;                           \
+            pc = saveArea->savedPc;                                         \
+            methodClassDex = curMethod->clazz->pDvmDex;                     \
+            if (dvmCheckException(self)) {                                  \
+                GOTO_exceptionThrown();                                     \
+            }                                                               \
+        }                                                                   \
+    }
+#else
 #define PERIODIC_CHECKS(_pcadj) {                              \
         if (dvmCheckSuspendQuick(self)) {                                   \
             EXPORT_PC();  /* need for precise GC */                         \
             dvmCheckSuspendPending(self);                                   \
         }                                                                   \
     }
+#endif

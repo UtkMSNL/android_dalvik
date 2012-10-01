@@ -123,12 +123,22 @@ static void Dalvik_dalvik_system_VMRuntime_disableJitCompilation(const u4* args,
     RETURN_VOID();
 }
 
+/* COMET note
+ *
+ * newNonMovableArray and addressOf each 
+ */
 static void Dalvik_dalvik_system_VMRuntime_newNonMovableArray(const u4* args,
     JValue* pResult)
 {
     ClassObject* elementClass = (ClassObject*) args[1];
     int length = args[2];
 
+#ifdef WITH_OFFLOAD
+    if (elementClass != gDvm.typeByte) {
+        dvmThrowIllegalArgumentException("elementClass must be byte");
+        RETURN_VOID();
+    }
+#endif    
     if (elementClass == NULL) {
         dvmThrowNullPointerException("elementClass == null");
         RETURN_VOID();
@@ -150,6 +160,14 @@ static void Dalvik_dalvik_system_VMRuntime_newNonMovableArray(const u4* args,
         RETURN_VOID();
     }
     dvmReleaseTrackedAlloc((Object*) newArray, NULL);
+
+#ifdef WITH_OFFLOAD
+    /* The array is not to be accessed by Java code.  To ensure this we make it
+     * look empty to Java.  This also makes sure we don't copy the contents of
+     * the array by mistake.  The heap will still clean this object up
+     * correctly. */
+    newArray->length = 0;
+#endif
 
     RETURN_PTR(newArray);
 }

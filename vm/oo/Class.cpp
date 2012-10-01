@@ -352,6 +352,16 @@ static bool createPrimitiveType(PrimitiveType primitiveType, ClassObject** pClas
     newClass->super = NULL;
     newClass->status = CLASS_INITIALIZED;
 
+#ifdef WITH_OFFLOAD
+    newClass->objId = offClassToId(newClass);
+    newClass->offInfo.obj = (Object*)newClass;
+    newClass->offInfo.dirty = 0;
+    newClass->offInfo.bits = NULL;
+    newClass->offInfo.isVolatileOwner =
+        newClass->offInfo.isLockOwner = !gDvm.isServer;
+    newClass->offInfo.isQueued = false;
+#endif
+
     /* don't need to set newClass->objectSize */
 
     LOGVV("Constructed class for primitive type '%s'", newClass->descriptor);
@@ -1356,6 +1366,26 @@ static ClassObject* findClassFromLoaderNoInit(const char* descriptor,
         goto bail;
     }
 
+#ifdef WITH_OFFLOAD
+    u4 i;
+    /* Going to seriously break class resolution for now.  Hopefully we can find
+     * a better fix later. */
+    for (i = 0; i < auxVectorSize(&gDvm.dexList) && clazz == NULL; i++) {
+        DvmDex* pDvmDex = (DvmDex*)auxVectorGet(&gDvm.dexList, i).v;
+        if (pDvmDex->classLoader && pDvmDex->classLoader != loader) {
+            continue;
+        }
+
+        /* Only try to load the class if its a bootstrap class or it comes
+         * from the same dex file associated with this loader. */
+        clazz = dvmDefineClass(pDvmDex, descriptor, pDvmDex->classLoader);
+        if (clazz == NULL) {
+            assert(dvmCheckException(self));
+            dvmClearException(self);
+        }
+    }
+    if (!clazz) {
+#endif
     dvmMethodTraceClassPrepBegin();
 
     /*
@@ -1373,6 +1403,12 @@ static ClassObject* findClassFromLoaderNoInit(const char* descriptor,
         clazz = (ClassObject*) result.l;
 
         dvmMethodTraceClassPrepEnd();
+    }
+#ifdef WITH_OFFLOAD
+    }
+#endif
+
+    {
         Object* excep = dvmGetException(self);
         if (excep != NULL) {
 #if DVM_SHOW_EXCEPTION >= 2
@@ -1386,7 +1422,8 @@ static ClassObject* findClassFromLoaderNoInit(const char* descriptor,
             clazz = NULL;
             goto bail;
         } else if (clazz == NULL) {
-            ALOGW("ClassLoader returned NULL w/o exception pending");
+            ALOGW("ClassLoader returned NULL w/o exception pending"
+                  " (loadClass '%s' %p)", dotName, loader);
             dvmThrowNullPointerException("ClassLoader returned null");
             goto bail;
         }
@@ -1980,6 +2017,10 @@ static ClassObject* loadClassFromDex(DvmDex* pDvmDex,
             result->descriptor, pDvmDex, classLoader);
     }
 
+#if defined(WITH_OFFLOAD) || defined(WITH_TRACER)
+    result->idx = pClassDef->classIdx;
+#endif
+
     return result;
 }
 
@@ -2161,6 +2202,12 @@ static void loadMethodFromDex(ClassObject* clazz, const DexMethod* pDexMethod,
     meth->clazz = clazz;
     meth->jniArgInfo = 0;
 
+#ifdef WITH_OFFLOAD
+    if(dvmIsNativeMethod(meth)) {
+        offLoadNativeMethod(meth);
+    }
+#endif
+
     if (dvmCompareNameDescriptorAndMethod("finalize", "()V", meth) == 0) {
         /*
          * The Enum class declares a "final" finalize() method to
@@ -2209,6 +2256,10 @@ static void loadMethodFromDex(ClassObject* clazz, const DexMethod* pDexMethod,
             meth->jniArgInfo = computeJniArgInfo(&meth->prototype);
         }
     }
+
+#if defined(WITH_OFFLOAD) || defined(WITH_TRACER)
+    meth->idx = pDexMethod->methodIdx;
+#endif
 }
 
 #if 0       /* replaced with private/read-write mapping */
@@ -2351,6 +2402,10 @@ static void loadSFieldFromDex(ClassObject* clazz,
      */
     //sfield->value.j = 0;
     assert(sfield->value.j == 0LL);     // cleared earlier with calloc
+
+#if defined(WITH_OFFLOAD) || defined(WITH_TRACER)
+    sfield->idx = pDexSField->fieldIdx;
+#endif
 }
 
 /*
@@ -2371,6 +2426,10 @@ static void loadIFieldFromDex(ClassObject* clazz,
 #ifndef NDEBUG
     assert(ifield->byteOffset == 0);    // cleared earlier with calloc
     ifield->byteOffset = -1;    // make it obvious if we fail to set later
+#endif
+
+#if defined(WITH_OFFLOAD) || defined(WITH_TRACER)
+    ifield->idx = pDexIField->fieldIdx;
 #endif
 }
 
@@ -2813,6 +2872,42 @@ bool dvmLinkClass(ClassObject* clazz)
      * massaged in precacheReferenceOffsets.)
      */
     computeRefOffsets(clazz);
+
+#if defined(WITH_OFFLOAD)
+    /* Need to set up the unresolved method table. */
+    Method* meth;
+    if(clazz->pDvmDex && !gDvm.optimizing) {
+      /* The only classes that have methods that don't come from a dex file are
+       * proxy classes and we're just kind of punting on those for the moment.
+       */
+      for(meth = clazz->directMethods;
+          meth != clazz->directMethods + clazz->directMethodCount; ++meth) {
+        dvmDexSetUnresolvedMethod(clazz->pDvmDex, meth->idx, meth);
+      }
+      for(meth = clazz->virtualMethods;
+          meth != clazz->virtualMethods + clazz->virtualMethodCount; ++meth) {
+        if(!dvmIsMirandaMethod(meth)) {
+          dvmDexSetUnresolvedMethod(clazz->pDvmDex, meth->idx, meth);
+        }
+      }
+    }
+
+    if(clazz->objId == COMM_INVALID_ID) {
+      clazz->objId = offClassToId(clazz);
+      clazz->offInfo.obj = (Object*)clazz;
+      clazz->offInfo.dirty = gDvm.isServer ? 0x00000000U : 0xFFFFFFFFU;
+      if (clazz->sfieldCount > 32) {
+        u4 sz = (clazz->sfieldCount - 1) >> 5;
+        clazz->offInfo.bits = (u4*)malloc(sz << 2);
+        memset(clazz->offInfo.bits, gDvm.isServer ? 0x00 : 0xFF, sz << 2);
+      } else {
+        clazz->offInfo.bits = NULL;
+      }
+      clazz->offInfo.isVolatileOwner = clazz->offInfo.isLockOwner =
+          !gDvm.isServer;
+      clazz->offInfo.isQueued = false;
+    }
+#endif
 
     /*
      * Done!
@@ -4219,18 +4314,14 @@ bool dvmIsClassInitializing(const ClassObject* clazz)
  * deviate from the spec in a meaningful way, we don't allow class init
  * to be interrupted by Thread.interrupt().
  */
-bool dvmInitClass(ClassObject* clazz)
+bool dvmDryInitClass(ClassObject* clazz)
 {
-    u8 startWhen = 0;
-
-#if LOG_CLASS_LOADING
-    bool initializedByUs = false;
-#endif
-
     Thread* self = dvmThreadSelf();
-    const Method* method;
 
-    dvmLockObject(self, (Object*) clazz);
+    if (clazz->status == CLASS_INITIALIZED) {
+        return true;
+    }
+
     assert(dvmIsClassLinked(clazz) || clazz->status == CLASS_ERROR);
 
     /*
@@ -4242,7 +4333,7 @@ bool dvmInitClass(ClassObject* clazz)
          */
         if (clazz->status == CLASS_ERROR) {
             throwEarlierClassFailure(clazz);
-            goto bail_unlock;
+            return false;
         }
 
         assert(clazz->status == CLASS_RESOLVED);
@@ -4283,7 +4374,7 @@ verify_failed:
                 OFFSETOF_MEMBER(ClassObject, verifyErrorClass),
                 (Object*) dvmGetException(self)->clazz);
             clazz->status = CLASS_ERROR;
-            goto bail_unlock;
+            return false;
         }
 
         clazz->status = CLASS_VERIFIED;
@@ -4316,13 +4407,13 @@ noverify:
     dvmFlushBreakpoints(clazz);
 
     if (clazz->status == CLASS_INITIALIZED)
-        goto bail_unlock;
+        return false;
 
     while (clazz->status == CLASS_INITIALIZING) {
         /* we caught somebody else in the act; was it us? */
         if (clazz->initThreadId == self->threadId) {
             //ALOGV("HEY: found a recursive <clinit>");
-            goto bail_unlock;
+            return false;
         }
 
         if (dvmCheckException(self)) {
@@ -4360,7 +4451,7 @@ noverify:
             assert(false);
             dvmThrowExceptionInInitializerError();
             clazz->status = CLASS_ERROR;
-            goto bail_unlock;
+            return false;
         }
         if (clazz->status == CLASS_INITIALIZING) {
             ALOGI("Waiting again for class init");
@@ -4376,7 +4467,7 @@ noverify:
             dvmThrowUnsatisfiedLinkError(
                 "(<clinit> failed, see exception in other thread)");
         }
-        goto bail_unlock;
+        return false;
     }
 
     /* see if we failed previously */
@@ -4386,10 +4477,6 @@ noverify:
         dvmUnlockObject(self, (Object*) clazz);
         throwEarlierClassFailure(clazz);
         return false;
-    }
-
-    if (gDvm.allocProf.enabled) {
-        startWhen = dvmGetRelativeTimeNsec();
     }
 
     /*
@@ -4410,7 +4497,7 @@ noverify:
     if (!validateSuperDescriptors(clazz)) {
         assert(dvmCheckException(self));
         clazz->status = CLASS_ERROR;
-        goto bail_unlock;
+        return false;
     }
 
     /*
@@ -4422,17 +4509,55 @@ noverify:
      */
     assert(clazz->status < CLASS_INITIALIZING);
 
-#if LOG_CLASS_LOADING
-    // We started initializing.
-    logClassLoad('+', clazz);
-    initializedByUs = true;
-#endif
-
     /* order matters here, esp. interaction with dvmIsClassInitializing */
     clazz->initThreadId = self->threadId;
     android_atomic_release_store(CLASS_INITIALIZING,
                                  (int32_t*)(void*)&clazz->status);
+    return true;
+}
+
+bool dvmInitClass(ClassObject* clazz) {
+    Thread* self = dvmThreadSelf();
+    const Method* method;
+
+    if (clazz->status == CLASS_INITIALIZED) {
+        return true;
+    }
+
+#ifdef WITH_OFFLOAD
+    if (clazz->status == CLASS_INITIALIZING &&
+        clazz->initThreadId == self->threadId) {
+        return true;
+    }
+    if (!gDvm.initializing && gDvm.isServer) {
+        if (dvmFindDirectMethodByDescriptor(clazz, "<clinit>", "()V") != NULL) {
+            InterpSaveState* sst = &self->interpSave;
+            if (sst->curFrame == NULL ||
+                SAVEAREA_FROM_FP(sst->curFrame)->method == NULL ||
+                dvmIsNativeMethod(SAVEAREA_FROM_FP(sst->curFrame)->method)) {
+                ALOGE("Non-interpreted frame below server clinit.  Cannot "
+                      "guarantee failure recovery");
+                offMigrateClinit(self, clazz);
+            } else while(clazz->status != CLASS_INITIALIZED) {
+                offMigrateThread(self);
+            }
+            return clazz->status != CLASS_ERROR;
+        }
+    }
+#endif
+
+    dvmLockObject(self, (Object*) clazz);
+    if (!dvmDryInitClass(clazz)) {
+        dvmUnlockObject(self, (Object*) clazz);
+        return clazz->status != CLASS_ERROR;
+    }
     dvmUnlockObject(self, (Object*) clazz);
+
+    if (clazz->status == CLASS_INITIALIZED) {
+        return true;
+    }
+
+    assert(clazz->status == CLASS_INITIALIZING);
 
     /* init our superclass */
     if (clazz->super != NULL && clazz->super->status != CLASS_INITIALIZED) {
@@ -4464,6 +4589,11 @@ noverify:
     } else {
         LOGVV("Invoking %s.<clinit>", clazz->descriptor);
         JValue unused;
+#ifdef WITH_OFFLOAD
+        pthread_mutex_lock(&gDvm.offCommLock);
+        auxVectorPushL(&gDvm.offStatusUpdate, (Object*)clazz);
+        pthread_mutex_unlock(&gDvm.offCommLock);
+#endif
         dvmCallMethod(self, method, NULL, &unused);
     }
 
@@ -4486,9 +4616,24 @@ noverify:
         clazz->status = CLASS_INITIALIZED;
         LOGVV("Initialized class: %s", clazz->descriptor);
 
+#ifdef WITH_OFFLOAD
+        if (!method) {
+            /* If there is no static initializer we don't want the fields to be
+             * dirty.  Effectively both sides start with the initial static
+             * fields in this case so we don't want this to overwrite changes
+             * the other endpint has made. */
+            clazz->offInfo.dirty = 0x00000000U;
+            if (clazz->sfieldCount > 32) {
+                u4 sz = (clazz->sfieldCount - 1) >> 5;
+                memset(clazz->offInfo.bits, 0x00, sz << 2);
+            }
+        }
+#endif
+
         /*
          * Update alloc counters.  TODO: guard with mutex.
          */
+/*
         if (gDvm.allocProf.enabled && startWhen != 0) {
             u8 initDuration = dvmGetRelativeTimeNsec() - startWhen;
             gDvm.allocProf.classInitTime += initDuration;
@@ -4496,15 +4641,19 @@ noverify:
             gDvm.allocProf.classInitCount++;
             self->allocProf.classInitCount++;
         }
+*/
     }
 
 bail_notify:
+#ifdef WITH_OFFLOAD
+    pthread_mutex_lock(&gDvm.offCommLock);
+    auxVectorPushL(&gDvm.offStatusUpdate, (Object*)clazz);
+    pthread_mutex_unlock(&gDvm.offCommLock);
+#endif
     /*
      * Notify anybody waiting on the object.
      */
     dvmObjectNotifyAll(self, (Object*) clazz);
-
-bail_unlock:
 
 #if LOG_CLASS_LOADING
     if (initializedByUs) {

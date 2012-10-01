@@ -417,6 +417,10 @@ static void Dalvik_dalvik_system_VMDebug_getInstructionCount(const u4* args,
 
         sched_yield();
         memcpy(storage, gDvm.executedInstrCounts, length * sizeof(int));
+
+#ifdef WITH_OFFLOAD
+        offTrackArrayWrite(countArray, 0, length);
+#endif
     }
 
     RETURN_VOID();

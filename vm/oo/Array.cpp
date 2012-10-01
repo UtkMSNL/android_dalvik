@@ -475,6 +475,16 @@ static ClassObject* createArrayClass(const char* descriptor, Object* loader)
         assert(newClass != NULL);
         return newClass;
     }
+#ifdef WITH_OFFLOAD
+    newClass->objId = offClassToId(newClass);
+    newClass->offInfo.obj = (Object*)newClass;
+    newClass->offInfo.dirty = 0;
+    newClass->offInfo.bits = NULL;
+    newClass->offInfo.isVolatileOwner =
+        newClass->offInfo.isLockOwner = !gDvm.isServer;
+    newClass->offInfo.isQueued = false;
+#endif
+
     dvmReleaseTrackedAlloc((Object*) newClass, NULL);
 
     ALOGV("Created array class '%s' %p (access=0x%04x.%04x)",
@@ -585,6 +595,10 @@ bool dvmUnboxObjectArray(ArrayObject* dstArray, const ArrayObject* srcArray,
 
         src++;
     }
+
+#ifdef WITH_OFFLOAD
+    offTrackArrayWrite(dstArray, 0, dstArray->length);
+#endif
 
     return true;
 }

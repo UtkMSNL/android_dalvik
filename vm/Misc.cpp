@@ -30,6 +30,10 @@
 #include <cutils/ashmem.h>
 #include <sys/mman.h>
 
+void __fail(int x) {
+  *(int*)x = x;
+}
+
 /*
  * Print a hex dump in this format:
  *

@@ -128,6 +128,7 @@ bool dvmIsClassInitializing(const ClassObject* clazz);
 /*
  * Initialize a class.
  */
+extern "C" bool dvmDryInitClass(ClassObject* clazz);
 extern "C" bool dvmInitClass(ClassObject* clazz);
 
 /*

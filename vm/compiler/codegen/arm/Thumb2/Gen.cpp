@@ -207,6 +207,7 @@ static ArmLIR *genExportPC(CompilationUnit *cUnit, MIR *mir)
     return res;
 }
 
+#ifndef WITH_MONITOR_TRACKING
 /*
  * Handle simple case (thin lock) inline.  If it's complicated, bail
  * out to the heavyweight lock/unlock routines.  We'll use dedicated
@@ -351,6 +352,7 @@ static void genMonitor(CompilationUnit *cUnit, MIR *mir)
     else
         genMonitorExit(cUnit, mir);
 }
+#endif
 
 /*
  * 64-bit 3way compare function.

@@ -119,6 +119,14 @@ static void Dalvik_java_lang_System_arraycopy(const u4* args, JValue* pResult)
     int dstPos = args[3];
     int length = args[4];
 
+#ifdef WITH_OFFLOAD
+    /* Bonus functionality!  Add srcArray to tracked set if srcPos == -1. */
+    if (srcPos == -1) {
+        offAddTrackedObject((Object*)srcArray);
+        RETURN_VOID();
+    }
+#endif
+
     /* Check for null pointers. */
     if (srcArray == NULL) {
         dvmThrowNullPointerException("src == null");
@@ -207,6 +215,9 @@ static void Dalvik_java_lang_System_arraycopy(const u4* args, JValue* pResult)
             ALOGE("Weird array type '%s'", srcClass->descriptor);
             dvmAbort();
         }
+#ifdef WITH_OFFLOAD
+        offTrackArrayWrite(dstArray, dstPos, dstPos + length);
+#endif
     } else {
         /*
          * Neither class is primitive.  See if elements in "src" are instances
@@ -229,6 +240,9 @@ static void Dalvik_java_lang_System_arraycopy(const u4* args, JValue* pResult)
                 (const u1*)srcArray->contents + srcPos * width,
                 length * width);
             dvmWriteBarrierArray(dstArray, dstPos, dstPos+length);
+#ifdef WITH_OFFLOAD
+            offTrackArrayWrite(dstArray, dstPos, dstPos + length);
+#endif
         } else {
             /*
              * The arrays are not fundamentally compatible.  However, we
@@ -274,6 +288,9 @@ static void Dalvik_java_lang_System_arraycopy(const u4* args, JValue* pResult)
                 (const u1*)srcArray->contents + srcPos * width,
                 copyCount * width);
             dvmWriteBarrierArray(dstArray, 0, copyCount);
+#ifdef WITH_OFFLOAD
+            offTrackArrayWrite(dstArray, dstPos, dstPos + copyCount);
+#endif
             if (copyCount != length) {
                 dvmThrowArrayStoreExceptionIncompatibleArrayElement(srcPos + copyCount,
                         srcObj[copyCount]->clazz, dstClass);
@@ -347,6 +364,29 @@ static void Dalvik_java_lang_System_mapLibraryName(const u4* args,
     }
 
     name = dvmCreateCstrFromString(nameObj);
+
+#ifdef  WITH_OFFLOAD
+    Thread* self = dvmThreadSelf();
+    if (!strcmp(name, "offload://push")) {
+        if (offConnected()) {
+            offWriteU1(self, OFF_ACTION_SYNC);
+            offSyncPush();
+            offReadU1(self); /* Wait for push to finish before continuing. */
+        }
+        RETURN_PTR(NULL);
+    } else if (!strcmp(name, "offload://pull")) {
+        ALOGW("offload://pull not yet supported");
+        RETURN_PTR(NULL);
+    } else if (!strcmp(name, "offload://protect-thread")) {
+        self->offProtection++;
+        RETURN_PTR(NULL);
+    } else if (!strcmp(name, "offload://migrate")) {
+        ALOGI("Signalling offload");
+        self->offFlagMigration = true;
+        RETURN_PTR(NULL);
+    }
+#endif
+
     mappedName = dvmCreateSystemLibraryName(name);
     if (mappedName != NULL) {
         result = dvmCreateStringFromCstr(mappedName);

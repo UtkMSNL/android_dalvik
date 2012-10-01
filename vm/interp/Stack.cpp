@@ -124,6 +124,11 @@ static bool dvmPushInterpFrame(Thread* self, const Method* method)
 
     self->interpSave.curFrame = FP_FROM_SAVEAREA(saveBlock);
 
+#ifdef WITH_OFFLOAD
+    self->breakFrames++;
+    CHECK_BREAK_FRAMES();
+#endif
+
     return true;
 }
 
@@ -202,6 +207,11 @@ bool dvmPushJNIFrame(Thread* self, const Method* method)
         (u1*)self->interpSave.curFrame - (u1*)FP_FROM_SAVEAREA(saveBlock));
 
     self->interpSave.curFrame = FP_FROM_SAVEAREA(saveBlock);
+
+#ifdef WITH_OFFLOAD
+    self->breakFrames++;
+    CHECK_BREAK_FRAMES();
+#endif
 
     return true;
 }
@@ -293,6 +303,9 @@ bool dvmPopLocalFrame(Thread* self)
         SAVEAREA_FROM_FP(saveBlock->prevFrame)->method->name);
     dvmPopJniLocals(self, saveBlock);
     self->interpSave.curFrame = saveBlock->prevFrame;
+#ifdef WITH_OFFLOAD
+    offStackFramePopped(self);
+#endif
 
     return true;
 }
@@ -344,6 +357,12 @@ static bool dvmPopFrame(Thread* self)
         self->interpSave.curFrame, saveBlock->prevFrame);
 
     self->interpSave.curFrame = saveBlock->prevFrame;
+
+#ifdef WITH_OFFLOAD
+    offStackFramePopped(self);
+    self->breakFrames--;
+    CHECK_BREAK_FRAMES();
+#endif
     return true;
 }
 

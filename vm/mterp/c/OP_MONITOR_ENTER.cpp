@@ -10,7 +10,13 @@ HANDLE_OPCODE(OP_MONITOR_ENTER /*vAA*/)
             GOTO_exceptionThrown();
         ILOGV("+ locking %p %s", obj, obj->clazz->descriptor);
         EXPORT_PC();    /* need for precise GC */
+#ifdef CHECK_STACK_INTEGRITY_DO
+        CHECK_STACK_INTEGRITY_DO(
+            dvmLockObject(self, obj)
+        );
+#else
         dvmLockObject(self, obj);
+#endif
     }
     FINISH(1);
 OP_END

@@ -20,6 +20,7 @@
 # for the exact command.)
 #
 
+include $(LOCAL_PATH)/Custom.mk
 
 #
 # Compiler defines.
@@ -55,7 +56,7 @@ ifeq ($(dvm_make_debug_vm),true)
   LOCAL_CFLAGS += -DWITH_TRACKREF_CHECKS
   LOCAL_CFLAGS += -DWITH_EXTRA_GC_CHECKS=1
   #LOCAL_CFLAGS += -DCHECK_MUTEX
-  LOCAL_CFLAGS += -DDVM_SHOW_EXCEPTION=3
+  LOCAL_CFLAGS += -DDVM_SHOW_EXCEPTION=1 # Was 3
   # add some extra stuff to make it easier to examine with GDB
   LOCAL_CFLAGS += -DEASY_GDB
   # overall config may be for a "release" build, so reconfigure these
@@ -204,6 +205,9 @@ else
 endif
 
 WITH_JIT := $(strip $(WITH_JIT))
+ifeq ($(dvm_arch),x86)
+  WITH_JIT := false
+endif
 
 ifeq ($(WITH_JIT),true)
   LOCAL_CFLAGS += -DWITH_JIT
@@ -307,4 +311,40 @@ ifeq ($(MTERP_ARCH_KNOWN),false)
   # measure, too.
   LOCAL_CFLAGS += -DdvmAsmInstructionStart=0 -DdvmAsmInstructionEnd=0 \
 	-DdvmAsmSisterStart=0 -DdvmAsmSisterEnd=0 -DDVM_NO_ASM_INTERP=1
+endif
+
+ifeq ($(dvm_offload),true)
+  LOCAL_CFLAGS += -DWITH_OFFLOAD \
+                  -DWITH_MONITOR_TRACKING
+  ifeq ($(dvm_make_debug_vm),true)
+    LOCAL_CFLAGS += -fno-inline -DOFFLOAD_DEBUG
+  else
+    LOCAL_CFLAGS += -DCANCEL_ASSERT
+  endif
+
+  LOCAL_SRC_FILES += \
+      auxiliary/Lookup.cpp \
+      auxiliary/Vector.cpp \
+      auxiliary/Queue.cpp \
+      auxiliary/Types.cpp \
+      auxiliary/FifoBuffer.cpp \
+      offload/Comm.cpp \
+      offload/Control.cpp \
+      offload/DexLoader.cpp \
+      offload/Engine.cpp \
+      offload/Lookup.cpp \
+      offload/MethodRules.cpp \
+      offload/Recovery.cpp \
+      offload/Sync.cpp \
+      offload/Threading.cpp \
+      offload/Stack.cpp
+endif
+
+ifeq ($(dvm_tracer),true)
+  LOCAL_CFLAGS += -DWITH_TRACER
+
+  LOCAL_SRC_FILES += \
+      auxiliary/Vector.cpp \
+      tracer/DexLoader.cpp \
+      tracer/Tracer.cpp
 endif

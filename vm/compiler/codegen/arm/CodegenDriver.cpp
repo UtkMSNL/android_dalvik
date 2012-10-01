@@ -1390,7 +1390,7 @@ static void genInterpSingleStep(CompilationUnit *cUnit, MIR *mir)
     opReg(cUnit, kOpBlx, r2);
 }
 
-#if defined(_ARMV5TE) || defined(_ARMV5TE_VFP) || defined(_ARMV6J) || defined(_ARMV6_VFP)
+#if defined(_ARMV5TE) || defined(_ARMV5TE_VFP) || defined(_ARMV6J) || defined(_ARMV6_VFP) || defined(WITH_MONITOR_TRACKING)
 /*
  * To prevent a thread in a monitor wait from blocking the Jit from
  * resetting the code cache, heavyweight monitor lock will not
@@ -1961,7 +1961,11 @@ static bool handleFmt11x(CompilationUnit *cUnit, MIR *mir)
         }
         case OP_MONITOR_EXIT:
         case OP_MONITOR_ENTER:
+#if defined(WITH_MONITOR_TRACKING)
+            genMonitorPortable(cUnit, mir);
+#else
             genMonitor(cUnit, mir);
+#endif
             break;
         case OP_THROW:
             genInterpSingleStep(cUnit, mir);

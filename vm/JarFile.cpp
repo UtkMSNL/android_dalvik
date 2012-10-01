@@ -343,6 +343,17 @@ tryArchive:
 
     ALOGV("Successfully opened '%s' in '%s'", kDexInJarName, fileName);
 
+#ifdef WITH_OFFLOAD
+    if (isBootstrap) {
+        offRegisterDex(pDvmDex, NULL, cachedName);
+    }
+#endif
+#ifdef WITH_TRACER
+    if (isBootstrap) {
+        trRegisterDex(pDvmDex, NULL, cachedName);
+    }
+#endif
+
     *ppJarFile = (JarFile*) calloc(1, sizeof(JarFile));
     (*ppJarFile)->archive = archive;
     (*ppJarFile)->cacheFileName = cachedName;

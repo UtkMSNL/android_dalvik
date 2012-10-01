@@ -1010,12 +1010,14 @@ const RegisterMap* dvmGetExpandedRegisterMap0(Method* method)
 
     /* sanity check to ensure this isn't called w/o external locking */
     /* (if we use this at a time other than during GC, fix/remove this test) */
+#ifndef WITH_OFFLOAD
     if (true) {
         if (!gDvm.zygote && dvmTryLockMutex(&gDvm.gcHeapLock) == 0) {
             ALOGE("GLITCH: dvmGetExpandedRegisterMap not called at GC time");
             dvmAbort();
         }
     }
+#endif
 
     RegisterMapFormat format = dvmRegisterMapGetFormat(curMap);
     switch (format) {

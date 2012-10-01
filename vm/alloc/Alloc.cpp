@@ -183,7 +183,9 @@ Object* dvmAllocObject(ClassObject* clazz, int flags)
     Object* newObj;
 
     assert(clazz != NULL);
+#ifndef WITH_OFFLOAD
     assert(dvmIsClassInitialized(clazz) || dvmIsClassInitializing(clazz));
+#endif
 
     /* allocate on GC heap; memory is zeroed out */
     newObj = (Object*)dvmMalloc(clazz->objectSize, flags);
@@ -234,6 +236,10 @@ Object* dvmCloneObject(Object* obj, int flags)
     }
 
     dvmTrackAllocation(clazz, size);    /* notify DDMS */
+
+#ifdef WITH_OFFLOAD
+    copy->objId = COMM_INVALID_ID;
+#endif
 
     return copy;
 }
