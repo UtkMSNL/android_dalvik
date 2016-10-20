@@ -869,17 +869,18 @@ void dvmLockObject(Thread* self, Object *obj)
     thinp = &obj->lock;
 retry:
 #ifdef WITH_OFFLOAD
-    InterpSaveState* sst = &self->interpSave;
+    /*InterpSaveState* sst = &self->interpSave;
     if (gDvm.isServer &&
             !offCheckLockOwnership(obj) &&
             sst->curFrame != NULL &&
             SAVEAREA_FROM_FP(sst->curFrame)->method != NULL &&
             !dvmIsNativeMethod(SAVEAREA_FROM_FP(sst->curFrame)->method)) {
         u4 migrateCounter = self->migrationCounter;
+        ALOGE("migrate from locking object");
         offMigrateThread(self);
         if(migrateCounter != self->migrationCounter) return;
     }
-    offEnsureLockOwnership(self, obj);
+    offEnsureLockOwnership(self, obj);*/
 #endif
     thin = *thinp;
     if (LW_SHAPE(thin) == LW_SHAPE_THIN) {

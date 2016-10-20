@@ -40,6 +40,9 @@ ifeq ($(TARGET_CPU_SMP),true)
 else
     LOCAL_CFLAGS += -DANDROID_SMP=0
 endif
+ifeq ($(dvm_offload),true)
+  LOCAL_CFLAGS += -DWITH_OFFLOAD
+endif
 
 LOCAL_SRC_FILES := $(local_src_files)
 LOCAL_C_INCLUDES := $(local_c_includes)

@@ -37,6 +37,9 @@ static void Dalvik_java_lang_reflect_Proxy_generateProxy(const u4* args,
     ClassObject* result;
 
     result = dvmGenerateProxyClass(str, interfaces, loader);
+#ifdef WITH_OFFLOAD
+    offRegisterProxy(result, strdup(result->descriptor), result->interfaces, result->interfaceCount);
+#endif
     RETURN_PTR(result);
 }
 

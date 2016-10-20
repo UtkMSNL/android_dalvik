@@ -315,7 +315,8 @@ endif
 
 ifeq ($(dvm_offload),true)
   LOCAL_CFLAGS += -DWITH_OFFLOAD \
-                  -DWITH_MONITOR_TRACKING
+                  -DWITH_MONITOR_TRACKING \
+                  -std=gnu++0x
   ifeq ($(dvm_make_debug_vm),true)
     LOCAL_CFLAGS += -fno-inline -DOFFLOAD_DEBUG
   else
@@ -337,7 +338,12 @@ ifeq ($(dvm_offload),true)
       offload/Recovery.cpp \
       offload/Sync.cpp \
       offload/Threading.cpp \
-      offload/Stack.cpp
+      offload/Stack.cpp \
+      offload/ParserCommon.cpp \
+      offload/CustomizedClass.cpp \
+      offload/MethodParser.cpp \
+      offload/UnoptDexLoader.cpp \
+      offload/GlobalAnalysis.cpp
 endif
 
 ifeq ($(dvm_tracer),true)

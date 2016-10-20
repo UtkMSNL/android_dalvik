@@ -31,6 +31,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 
 #include <stdarg.h>
 #include <pthread.h>
@@ -39,6 +40,15 @@
 struct GcHeap;
 struct BreakpointSet;
 struct InlineSub;
+
+struct charscomp {
+    bool operator() (const char* lhs, const char* rhs) const {
+        if(lhs == NULL || rhs == NULL) {
+            ALOGE("get one null from either lhs: %p, rhs: %p", lhs, rhs);
+        }
+        return strcmp(lhs, rhs) < 0;
+    }
+};
 
 /*
  * One of these for each -ea/-da/-esa/-dsa on the command line.
@@ -743,6 +753,15 @@ struct DvmGlobals {
     u4 offNetRTTVar;
 
     int offNetPipe[2];
+    
+    // Modified by Yong map which stores the method access information
+    std::map<char*, MethodAccResult*, charscomp>* methodAccMap;
+    // method class access offset cache
+    std::map<char*, u4, charscomp>* methodClzOffsetMap;
+    // Add method execution time cache
+    std::map<const Method*, u4>* methodExePointMap;
+    // Add method execution times count
+    std::map<char*, u4, charscomp>* methodExeCountMap;
 
     // offload/Comm.h
     u4 nextId;
@@ -759,6 +778,9 @@ struct DvmGlobals {
     FifoBuffer      offProxyFifoAll;
 
     Vector offStatusUpdate;
+    
+    /* flag to indicate that if concurrent gc should be disabled */
+    bool            conGcDisabled;
 
     // offload/Engine.h
     bool            offDisabled;

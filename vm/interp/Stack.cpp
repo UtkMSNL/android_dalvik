@@ -304,7 +304,7 @@ bool dvmPopLocalFrame(Thread* self)
     dvmPopJniLocals(self, saveBlock);
     self->interpSave.curFrame = saveBlock->prevFrame;
 #ifdef WITH_OFFLOAD
-    offStackFramePopped(self);
+//    offStackFramePopped(self);
 #endif
 
     return true;
@@ -359,7 +359,7 @@ static bool dvmPopFrame(Thread* self)
     self->interpSave.curFrame = saveBlock->prevFrame;
 
 #ifdef WITH_OFFLOAD
-    offStackFramePopped(self);
+//    offStackFramePopped(self);
     self->breakFrames--;
     CHECK_BREAK_FRAMES();
 #endif

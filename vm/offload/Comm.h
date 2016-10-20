@@ -3,6 +3,7 @@
 
 #include "Inlines.h"
 #include "alloc/Heap.h"
+#include <vector>
 
 #define COMM_CLASS_BID 0x3U
 #define GET_ID_MASK(id) ((id) & 3U << 30U)
@@ -12,10 +13,12 @@
 
 struct Thread;
 struct Object;
+struct Method;
 struct ArrayObject;
 struct ClassObject;
 struct InstField;
 struct StaticField;
+//struct ObjectAccResult;
 
 typedef struct ObjectInfo {
   /* The pointer to the Object. */
@@ -48,6 +51,14 @@ struct ObjectInfo* offIdObjectInfo(u4 objId);
 
 /* Add tracked object to the offload engine. */
 void offAddTrackedObject(struct Object* obj);
+
+/* Add an object into track and handle its fields recursively */
+void offAddObjectIntoTrack(struct Object* objToAdd, struct ObjectAccResult* objAccInfoToAdd, FifoBuffer* fb);
+
+void offAddVectorIntoTrack(std::vector<Object*>* objVec, FifoBuffer* fb);
+
+void pushAllClazzInfo(FifoBuffer* fb);
+void pushClazzInfo(const Method* method, char* key, FifoBuffer* fb);
 
 /* Register the proxy class. */
 void offRegisterProxy(struct ClassObject* clazz, char* str,

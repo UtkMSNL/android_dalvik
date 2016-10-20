@@ -1879,7 +1879,7 @@ GOTO_TARGET(returnFromMethod)
             curMethod->name, curMethod->shorty);
 
 #ifdef WITH_OFFLOAD
-        offStackFramePopped(self);
+//        offStackFramePopped(self);
 #endif
         /* use FINISH on the caller's invoke instruction */
         //u2 invokeInstr = INST_INST(FETCH(0));
@@ -2261,7 +2261,7 @@ GOTO_TARGET(invokeMethod, bool methodCallRange, const Method* _methodToCall,
             dvmPopJniLocals(self, newSaveArea);
             self->interpSave.curFrame = fp;
 #ifdef WITH_OFFLOAD
-            offStackFramePopped(self);
+//            offStackFramePopped(self);
 #endif
 
             /*

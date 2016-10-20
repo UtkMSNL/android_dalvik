@@ -16,14 +16,17 @@ INLINE void offMarkField(ObjectInfo* info, u4 fieldIndex) {
   if(~*ptr & val) {
     android_atomic_or(val, ptr);
   }
-
-  if(!info->isQueued) {
-    pthread_mutex_lock(&gDvm.offCommLock);
+  
+  // Modified by Yong, only add it into write queue for a server
+  if(gDvm.isServer) {
     if(!info->isQueued) {
-      info->isQueued = true;
-      offAddToWriteQueueLocked(info->obj);
+      pthread_mutex_lock(&gDvm.offCommLock);
+      if(!info->isQueued) {
+        info->isQueued = true;
+        offAddToWriteQueueLocked(info->obj);
+      }
+      pthread_mutex_unlock(&gDvm.offCommLock);
     }
-    pthread_mutex_unlock(&gDvm.offCommLock);
   }
 }
 

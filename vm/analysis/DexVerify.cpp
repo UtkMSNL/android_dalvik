@@ -1209,6 +1209,10 @@ static bool verifyInstructions(VerifierData* vdata)
             dvmInsnSetGcPoint(insnFlags, codeOffset, true);
         }
 
+        // modified by Yong @ Mar,28
+        //if(codeOffset == 0) {
+        //    dvmInsnSetGcPoint(insnFlags, codeOffset, true);
+        //}
         assert(width > 0);
         codeOffset += width;
         insns += width;

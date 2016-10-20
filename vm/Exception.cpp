@@ -812,7 +812,7 @@ int dvmFindCatchBlock(Thread* self, int relPc, Object* exception,
     if (!scanOnly) {
         self->interpSave.curFrame = fp;
 #ifdef WITH_OFFLOAD
-        offStackFramePopped(self);
+//        offStackFramePopped(self);
 #endif
     }
 

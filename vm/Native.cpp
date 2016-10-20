@@ -57,13 +57,13 @@ void hookInternalNative(const u4* args, JValue* pResult,
                         const Method* method, Thread* self) {
     DalvikBridgeFunc dfunc = (DalvikBridgeFunc)method->insns;
     if (dfunc) {
-        if (~method->accessFlags & ACC_OFFLOADABLE) {
+       /* if (~method->accessFlags & ACC_OFFLOADABLE) {
             offSchedulerUnsafePoint(self);
-        }
+        }*/
         dfunc(args, pResult, method, self);
-        if (~method->accessFlags & ACC_OFFLOADABLE) {
+        /*if (~method->accessFlags & ACC_OFFLOADABLE) {
             offSchedulerUnsafePoint(self);
-        }
+        }*/
     } else if(method == gDvm.offMethLogNative) {
         StringObject* tagStr = (StringObject*)args[2];
         StringObject* msgStr = (StringObject*)args[3];

@@ -120,11 +120,14 @@ static void Dalvik_java_lang_System_arraycopy(const u4* args, JValue* pResult)
     int length = args[4];
 
 #ifdef WITH_OFFLOAD
+  // Modified by Yong, only add it into write queue for a server
+  if(gDvm.isServer) {
     /* Bonus functionality!  Add srcArray to tracked set if srcPos == -1. */
     if (srcPos == -1) {
         offAddTrackedObject((Object*)srcArray);
         RETURN_VOID();
     }
+  }
 #endif
 
     /* Check for null pointers. */

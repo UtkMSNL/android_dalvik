@@ -65,6 +65,7 @@ Method* auxMethodByIdx(DvmDex* pDvmDex, u4 methodIdx,
           dexStringByTypeIdx(pDvmDex->pDexFile, methIdInfo->classIdx);
       /* Force the class to be loaded. */
       dvmFindClassNoInit(classDesc, pDvmDex->classLoader);
+      ALOGE("class loaded for method");
       meth = dvmDexGetUnresolvedMethod(pDvmDex, methodIdx);
     }
   }

@@ -927,6 +927,12 @@ Object* dvmGetThisPtr(const Method* method, const u4* fp)
 void dvmInterpCheckTrackedRefs(Thread* self, const Method* method,
     int debugTrackedRefStart)
 {
+
+#if defined(WITH_OFFLOAD)
+  if(gDvm.isServer) {
+    return;
+  }
+#endif
     if (dvmReferenceTableEntries(&self->internalLocalRefTable)
         != (size_t) debugTrackedRefStart)
     {

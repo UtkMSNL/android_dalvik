@@ -299,7 +299,8 @@ INLINE void dvmInsnSetBranchTarget(InsnFlags* insnFlags, int addr,
  * Instruction is a GC point?
  */
 INLINE bool dvmInsnIsGcPoint(const InsnFlags* insnFlags, int addr) {
-    return (insnFlags[addr] & kInsnFlagGcPoint) != 0;
+    // modified by Yong @ Mar, 28
+    return (insnFlags[addr] & kInsnFlagGcPoint) != 0;// || addr == 0;
 }
 INLINE void dvmInsnSetGcPoint(InsnFlags* insnFlags, int addr,
     bool isGcPoint)

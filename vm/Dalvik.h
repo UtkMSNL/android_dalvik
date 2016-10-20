@@ -101,6 +101,9 @@
 #include "offload/Stack.h"
 #include "offload/MethodRules.h"
 #include "offload/Recovery.h"
+#include "offload/MethodParser.h"
+#include "offload/UnoptDexLoader.h"
+#include "offload/GlobalAnalysis.h"
 #endif
 #include "Globals.h"
 #include "reflect/Reflect.h"

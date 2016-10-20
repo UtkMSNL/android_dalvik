@@ -228,7 +228,7 @@ int dvmRawDexFileOpen(const char* fileName, const char* odexOutputName,
 
     *ppRawDexFile = (RawDexFile*) calloc(1, sizeof(RawDexFile));
     (*ppRawDexFile)->cacheFileName = cachedName;
-    (*ppRawDexFile)->pDvmDex = pDvmDex;
+    (*ppRawDexFile)->pDvmDex = pDvmDex;   
     cachedName = NULL;      // don't free it below
     result = 0;
 

@@ -132,7 +132,7 @@ int dvmDexFileOpenFromFd(int fd, DvmDex** ppDvmDex)
     sysCopyMap(&pDvmDex->memMap, &memMap);
     pDvmDex->isMappedReadOnly = true;
     *ppDvmDex = pDvmDex;
-    result = 0;
+    result = 0;  
 
 bail:
     return result;

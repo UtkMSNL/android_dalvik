@@ -97,7 +97,12 @@ MTERP_OFFSET(offStackSaveArea_currentPc, StackSaveArea, xtra.currentPc, 16)
 MTERP_OFFSET(offStackSaveArea_localRefCookie, \
                                         StackSaveArea, xtra.localRefCookie, 16)
 MTERP_OFFSET(offStackSaveArea_returnAddr, StackSaveArea, returnAddr, 20)
+#ifdef WITH_OFFLOAD
+MTERP_OFFSET(offStackSaveArea_startTime, StackSaveArea, startTime, 24)
+MTERP_SIZEOF(sizeofStackSaveArea,       StackSaveArea, 32)
+#else
 MTERP_SIZEOF(sizeofStackSaveArea,       StackSaveArea, 24)
+#endif
 #else
 MTERP_OFFSET(offStackSaveArea_prevFrame, StackSaveArea, prevFrame, 0)
 MTERP_OFFSET(offStackSaveArea_savedPc,  StackSaveArea, savedPc, 4)
@@ -107,10 +112,12 @@ MTERP_OFFSET(offStackSaveArea_localRefCookie, \
                                         StackSaveArea, xtra.localRefCookie, 12)
 MTERP_OFFSET(offStackSaveArea_returnAddr, StackSaveArea, returnAddr, 16)
 #ifdef WITH_OFFLOAD
-MTERP_SIZEOF(sizeofStackSaveArea,       StackSaveArea, 24)
+MTERP_OFFSET(offStackSaveArea_startTime, StackSaveArea, startTime, 20)
+MTERP_SIZEOF(sizeofStackSaveArea,       StackSaveArea, 28)
 #else
 MTERP_SIZEOF(sizeofStackSaveArea,       StackSaveArea, 20)
 #endif
+
 #endif
 
   /* ShadowSpace fields */

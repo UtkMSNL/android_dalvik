@@ -961,6 +961,11 @@ const u1* dvmRegisterMapGetLine(const RegisterMap* pMap, int addr)
             }
         }
     }
+    
+    if (addr == 0) {
+        data = pMap->data;
+        return  data + addrWidth;
+    }
 
     return NULL;
 }

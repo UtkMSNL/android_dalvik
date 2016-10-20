@@ -179,6 +179,10 @@ retry:
   assert(self->status == THREAD_RUNNING);
   if(noSync(obj) || auxObjectToId(obj) == COMM_INVALID_ID) return;
   if(!offRecoveryEnterHazard(self)) return;
+  // server donot need to grab the lock of finalizer
+  if(obj->clazz == gDvm.classJavaLangClass && !strcmp(((ClassObject*)obj)->descriptor, "Ljava/lang/ref/FinalizerReference;")) {
+   return;
+  }
 
   while(!offCheckLockOwnership(obj) && gDvm.offConnected) {
 ALOGI("THREAD %d ASKING FOR OWNERSHIP FOR %d", self->threadId, obj->objId);
@@ -223,6 +227,7 @@ void offPerformLock(Thread* self) {
   if(!obj) {
     /* We haven't heard of the object yet.  The caller will most likely try
      * again. */
+    ALOGE("lock failed because of unheard object, id: %d", objId);
     offWriteU1(self, OFF_ACTION_RESUME);
     offWriteU1(self, false);
     return;
@@ -230,6 +235,7 @@ void offPerformLock(Thread* self) {
 
   lockMonitorNoOwn(self, obj);
   if(!offCheckLockOwnership(obj)) {
+    ALOGE("lock failed because of lock failed object, id: %d, class is: %s", objId, obj->clazz == gDvm.classJavaLangClass ? ((ClassObject*)obj)->descriptor : obj->clazz->descriptor);
     unlockMonitorNoOwn(self, obj);
     offWriteU1(self, OFF_ACTION_RESUME);
     offWriteU1(self, false);

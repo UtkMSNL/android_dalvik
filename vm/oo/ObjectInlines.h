@@ -425,6 +425,9 @@ INLINE void dvmSetStaticFieldObject(StaticField* sfield, Object* val) {
         dvmWriteBarrierField(sfield->clazz, &sfield->value.l);
     }
 #ifdef WITH_OFFLOAD
+    /*if(++gDvm.changeCount % 10 == 0) {
+    ALOGE("A global field has changed in somewhere, now time: %llu, change count: %d, clazz is: %s, field is: %s", dvmGetRelativeTimeUsec(), gDvm.changeCount, sfield->clazz->descriptor, sfield->name);
+    }*/
     offTrackGlobalWrite(sfield);
 #endif
 }
@@ -475,6 +478,9 @@ INLINE void dvmSetStaticFieldObjectVolatile(StaticField* sfield, Object* val) {
         dvmWriteBarrierField(sfield->clazz, &sfield->value.l);
     }
 #ifdef WITH_OFFLOAD
+    /*if(++gDvm.changeCount % 10 == 0) {
+    ALOGE("A global field has changed in volatile, now time: %llu, change count: %d, clazz is: %s, field is: %s", dvmGetRelativeTimeUsec(), gDvm.changeCount, sfield->clazz->descriptor, sfield->name);
+    }*/
     offTrackGlobalWriteVolatile(sfield);
 #endif
 }

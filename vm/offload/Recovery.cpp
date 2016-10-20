@@ -82,7 +82,7 @@ static int cleanupThread(Thread* thread, void* parg) {
   thread->offFlagMigration = false;
   thread->offLocalOnly = true;
   assert(thread->offLocal);
-  thread->offSyncStackStop = NULL;
+//  thread->offSyncStackStop = NULL;
 
   auxFifoDestroy(&thread->offWriteBuffer);
   auxFifoDestroy(&thread->offReadBuffer);
@@ -107,7 +107,10 @@ static int addStatusUpdate(ClassObject* clazz, void* arg) {
   clazz->offInfo.remoteWaitCount = 0;
   clazz->offInfo.isLockOwner = true;
   clazz->offInfo.isVolatileOwner = true;
-  offAddToWriteQueueLocked(clazz);
+  // Modified by Yong, only add it into write queue for a server
+  if(gDvm.isServer) {
+    offAddToWriteQueueLocked(clazz);
+  }
   return 0;
 }
 

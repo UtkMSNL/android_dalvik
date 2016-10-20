@@ -28,6 +28,7 @@ subdirs := $(addprefix $(LOCAL_PATH)/,$(addsuffix /Android.mk, \
 		tcpmux \
 		tools \
 		unit-tests \
+		apkanalysis \
 	))
 
 include $(subdirs)

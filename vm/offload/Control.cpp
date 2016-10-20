@@ -14,6 +14,9 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <iostream>
+#include <fstream>
+#include <vector>
 
 /* <linux/tcp.h> was giving me a problem on some systems.  Copied below are the
  * definitions we need from it. */
@@ -52,6 +55,8 @@
     } else if((_res) == 0) {                                                \
       break;                                                                \
     }
+
+std::ifstream staticfile;
 
 typedef struct MsgHeader {
   u4 id;
@@ -178,9 +183,9 @@ static void message_loop(int s) {
 #endif
       csent_bytes += ntohl(whdr.sz);
     } else if(wst == -1 && sent_bytes != sent_acked_bytes) {
-      ALOGI("WRITE[b, db, cb, dcb] = [%lld, %lld, %lld, %lld]",
-           sent_bytes, sent_bytes - sent_acked_bytes,
-           csent_bytes, csent_bytes - csent_acked_bytes);
+//      ALOGI("WRITE[b, db, cb, dcb] = [%lld, %lld, %lld, %lld]",
+//           sent_bytes, sent_bytes - sent_acked_bytes,
+//           csent_bytes, csent_bytes - csent_acked_bytes);
       sent_acked_bytes = sent_bytes;
       csent_acked_bytes = csent_bytes;
     }
@@ -231,9 +236,9 @@ static void message_loop(int s) {
           cread_bytes += rsz;
           read_bytes += sizeof(rbuftmp) - rstrm.avail_out;
           if(read_bytes - read_acked_bytes > (1<<10)) {
-            ALOGI("READ [b, db, cb, dcb] = [%lld, %lld, %lld, %lld]",
-                 read_bytes, read_bytes - read_acked_bytes,
-                 cread_bytes, cread_bytes - cread_acked_bytes);
+//            ALOGI("READ [b, db, cb, dcb] = [%lld, %lld, %lld, %lld]",
+//                 read_bytes, read_bytes - read_acked_bytes,
+//                 cread_bytes, cread_bytes - cread_acked_bytes);
             read_acked_bytes = read_bytes;
             cread_acked_bytes = cread_bytes;
           }
@@ -334,6 +339,19 @@ static void message_loop(int s) {
   offRecoveryWaitForClearance(NULL);
 }
 
+static int getprocname(char *buf, size_t len) {
+    pid_t pid = getpid();
+    char filename[20];
+    FILE *f;
+
+    sprintf(filename, "/proc/%d/cmdline", pid);
+    f = fopen(filename, "r");
+    if (!f) { *buf = '\0'; return 1; }
+    if (!fgets(buf, len, f)) { *buf = '\0'; return 2; }
+    fclose(f);
+    return 0;
+}
+
 void* offControlLoop(void* junk) {
   union {
     struct sockaddr_in addrin;
@@ -410,6 +428,103 @@ void* offControlLoop(void* junk) {
     /* Create the write event pipe.  We don't want to do it earlier before the
      * server/zygote forks as the messages will cross processes. */
     pipe(gDvm.offNetPipe);
+    // Modified by Yong 06/23/2014
+    // before entering the loop, we load the apk parse result into memory, if cannot find locally, transmit from the remote server
+    if(!gDvm.isServer) {
+        char filename[100];
+        strcpy(filename, "/data/data/");
+        char procname[80];
+        getprocname(procname, 80);
+        strcat(filename, procname);
+        strcat(filename, "/parse.txt");
+        gDvm.methodAccMap = new std::map<char*, MethodAccResult*, charscomp>(); // todel
+        retrieveMethodInfo(gDvm.methodAccMap, filename); //todel
+        
+        gDvm.methodClzOffsetMap = new std::map<char*, u4, charscomp>();
+        char offsetfile[100];
+        strcpy(offsetfile, "/data/data/");
+        strcat(offsetfile, procname);
+        strcat(offsetfile, "/offset.txt");
+        retrieveOffsetMap(gDvm.methodClzOffsetMap, offsetfile);
+        
+        char staticfilename[100];
+        strcpy(staticfilename, "/data/data/");
+        strcat(staticfilename, procname);
+        strcat(staticfilename, "/static.txt");
+        staticfile.open(staticfilename);
+     } //todel
+        
+ /*       int openfd = open(filename, O_RDONLY, 0664);
+        char buffer[MAX_CONTROL_VPACKET_SIZE];
+        bzero(buffer, MAX_CONTROL_VPACKET_SIZE);
+        // the parse result file is not present in server, load it from remote server
+        if(openfd == -1) {
+            // send a flag to indicate that we need the server to send the data
+            strcpy(buffer, "1");
+            write(s, buffer, 1);
+            // write proc name length and proc name
+            int pnameLen = strlen(procname);
+            write(s, reinterpret_cast<char*>(&pnameLen), sizeof(pnameLen));
+            write(s, procname, pnameLen);
+            // read the file size
+            long filesize;
+            read(s, reinterpret_cast<char*>(&filesize), sizeof(filesize));
+            std::ofstream parsefile(filename, std::ios::binary);
+            while(filesize > 0) {
+                int readresult = read(s, buffer, filesize > MAX_CONTROL_VPACKET_SIZE ? MAX_CONTROL_VPACKET_SIZE : filesize);
+                if(readresult < 0) {
+                    ALOGE("control recieve error data");
+                    continue;
+                }
+                parsefile.write(buffer, filesize > MAX_CONTROL_VPACKET_SIZE ? MAX_CONTROL_VPACKET_SIZE : filesize);
+                filesize = (filesize > MAX_CONTROL_VPACKET_SIZE) ? filesize - MAX_CONTROL_VPACKET_SIZE : 0;
+            }
+            parsefile.close();
+        } else {
+            strcpy(buffer, "2");
+            write(s, buffer, 1);
+            close(openfd);
+        }
+        gDvm.methodAccMap = new std::map<char*, MethodAccResult*, charscomp>();
+        retrieveMethodInfo(gDvm.methodAccMap, filename);
+    } else {
+        char buffer[MAX_CONTROL_VPACKET_SIZE];
+        bzero(buffer, MAX_CONTROL_VPACKET_SIZE);
+        read(s, buffer, 1);
+        if(buffer[0] == '1') {
+            char* BASE_PATH = getenv("OFFLOAD_PARSE_CACHE");
+            char filename[160];
+            int pnameLen;
+            read(s, reinterpret_cast<char*>(&pnameLen), sizeof(pnameLen));
+            char procname[pnameLen + 1];
+            read(s, procname, pnameLen);
+            procname[pnameLen] = '\0';
+            strcpy(filename, BASE_PATH);
+            strcat(filename, "/");
+            strcat(filename, procname);
+            strcat(filename, ".txt");
+            std::streampos begin, end;
+            std::ifstream parsefile(filename, std::ios::binary);
+            parsefile.seekg(0, std::ios::end);
+            end = parsefile.tellg(); 
+            parsefile.seekg(0, std::ios::beg);
+            begin = parsefile.tellg();
+            long filesize = (end - begin);
+            ALOGI("control the server file path is: %s, file size is: %d", filename, (int) filesize);
+            // write out the size of the file
+            write(s, reinterpret_cast<char*>(&filesize), sizeof(filesize));
+            // write out the actual content of the file
+            while(parsefile.read(buffer, MAX_CONTROL_VPACKET_SIZE)) {
+                while(write(s, buffer, MAX_CONTROL_VPACKET_SIZE) < 0);
+            }
+            // process the last read result
+            while(write(s, buffer, parsefile.gcount()) < 0);
+            parsefile.close();
+        } else {
+            ALOGI("control server no need file pull");
+        }
+    }*/
+    // Modified end
     message_loop(s);
     close(gDvm.offNetPipe[0]);
     close(gDvm.offNetPipe[1]);
@@ -579,7 +694,8 @@ bool offControlStartup(int afterZygote) {
 
     const char* env_server = getenv("OFF_SERVER");
     gDvm.isServer = env_server && !strcmp("1", env_server);
-
+    gDvm.methodExePointMap = new std::map<const Method*, u4>();
+    gDvm.methodExeCountMap = new std::map<char*, u4, charscomp>();
     res = offThreadingStartup() &&
           offDexLoaderStartup() && offCommStartup() &&
           offSyncStartup() && offMethodRulesStartup() &&
@@ -620,6 +736,7 @@ void offControlShutdown() {
     pthread_join(gDvm.offControlThread, NULL);
   }
 
+  staticfile.close();
   offSyncShutdown();
   offEngineShutdown();
   offCommShutdown();

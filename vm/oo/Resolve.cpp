@@ -158,7 +158,7 @@ ClassObject* dvmResolveClass(const ClassObject* referrer, u4 classIdx,
             dexStringByTypeIdx(pDvmDex->pDexFile, classIdx));
         assert(dvmCheckException(dvmThreadSelf()));
     }
-
+    
     return resClass;
 }
 

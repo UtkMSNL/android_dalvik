@@ -3053,6 +3053,11 @@ static bool initRegisterTable(const VerifierData* vdata,
 
     for (i = 0; i < insnsSize; i++) {
         bool interesting;
+        
+        // modified by Yong @ Mar,28
+        //if(i == 0) {
+        //    interesting = true;
+        //}
 
         switch (trackRegsFor) {
         case kTrackRegsAll:
@@ -3115,6 +3120,11 @@ static bool initRegisterTable(const VerifierData* vdata,
     u1* storage = (u1*)regTable->lineAlloc;
     for (i = 0; i < insnsSize; i++) {
         bool interesting;
+        
+        // modified by Yong @ Mar,28
+        //if(i == 0) {
+        //    interesting = true;
+        //}
 
         switch (trackRegsFor) {
         case kTrackRegsAll:

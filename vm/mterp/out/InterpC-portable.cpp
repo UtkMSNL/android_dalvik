@@ -28,6 +28,8 @@
 #include <math.h>                   // needed for fmod, fmodf
 #include "mterp/common/FindInterface.h"
 
+#include <sstream>
+
 /*
  * Configuration defines.  These affect the C implementations, i.e. the
  * portable interpreter(s) and C stubs.
@@ -43,7 +45,6 @@
 # define CHECK_BRANCH_OFFSETS
 # define CHECK_REGISTER_INDICES
 #endif
-
 /*
  * Some architectures require 64-bit alignment for access to 64-bit data
  * types.  We can't just use pointers to copy 64-bit values out of our
@@ -159,6 +160,119 @@ static inline s8 getLongFromArray(const u4* ptr, int idx)
     return val;
 #endif
 }
+
+u8 acctime = -1U;
+u8 acttime = -1U;
+u8 pcaltime = -1U;
+u8 timetime = -1U;
+u8 dijtime = -1U;
+u8 transtime = -1U;
+u8 chesstime = -1U;
+u8 truntime = -1U;
+u8 mruntime = -1U;
+u8 psoltime = -1U;
+u8 pinittime = -1U;
+void offSchedulerSafePoint(Thread* self, const Method* method) {
+    // sudoku
+     if(!strcmp(method->clazz->descriptor, "Lcom/genina/ads/AdView$MyLocalThread;") && !strcmp(method->name, "run") && method->idx == 1289) {
+        truntime = dvmGetRelativeTimeUsec();
+     } else if(!strcmp(method->clazz->descriptor, "Lcom/icenta/sudoku/ui/MobileSudoku$42;") && !strcmp(method->name, "run") && method->idx == 2996) {
+        mruntime = dvmGetRelativeTimeUsec();
+     } else if(!strcmp(method->clazz->descriptor, "Lcom/icenta/sudoku/Puzzle;") && !strcmp(method->name, "solve") && method->idx == 2811) {
+        psoltime = dvmGetRelativeTimeUsec();
+     } else if(!strcmp(method->clazz->descriptor, "Lcom/icenta/sudoku/Puzzle;") && !strcmp(method->name, "<init>") && method->idx == 2784) {
+        pinittime = dvmGetRelativeTimeUsec();
+     }
+     
+     // chess
+     else if (!strcmp(method->clazz->descriptor, "Lcom/google/android/chess/b;") && !strcmp(method->name, "h") && method->idx == 286) {
+        chesstime = dvmGetRelativeTimeUsec();
+     }
+     
+     // poker odds
+     /*else if(!strcmp(method->clazz->descriptor, "Lcom/leslie/cjpokeroddscalculator/CJPokerOddsCalculator$3;") && !strcmp(method->name, "access$0") && method->idx == 61) {
+        acctime = dvmGetRelativeTimeUsec();
+     } else*/ if(!strcmp(method->clazz->descriptor, "Lcom/leslie/cjpokeroddscalculator/CJPokerOddsCalculator$3;") && !strcmp(method->name, "poker_calculation") && method->idx == 73) {
+        pcaltime = dvmGetRelativeTimeUsec();
+     }
+     
+     // ru metro
+     else if(!strcmp(method->clazz->descriptor, "Lcom/mechsoft/ru/metro/MainActivity$20;") && !strcmp(method->name, "run") && method->idx == 440) {
+        acttime = dvmGetRelativeTimeUsec();
+     } else if(!strcmp(method->clazz->descriptor, "Lcom/mechsoft/ru/graph/Graph;") && !strcmp(method->name, "TheShortestPathByTime") && method->idx == 313) {
+        timetime = dvmGetRelativeTimeUsec();
+     } else if(!strcmp(method->clazz->descriptor, "Lcom/mechsoft/ru/graph/Graph;") && !strcmp(method->name, "Dijkstra") && method->idx == 312) {
+        dijtime = dvmGetRelativeTimeUsec();
+     } else if(!strcmp(method->clazz->descriptor, "Lcom/mechsoft/ru/graph/Graph;") && !strcmp(method->name, "TheShortestPathByTransfer") && method->idx == 314) {
+        transtime = dvmGetRelativeTimeUsec();
+     }
+  if(gDvm.offDisabled) return;
+  //if(++self->offTimeCounter & 0x3FF) return;
+  if(!method->clazz->pDvmDex->classLoader) return;
+  if(!gDvm.isServer && self->offProtection == 0 && !self->offFlagMigration &&
+     offWellConnected()) {
+     // offload test
+      if(!strcmp(method->clazz->descriptor, "Ledu/utk/offloadtest/MainActivity;") && !strcmp(method->name, "matrixTest")) {
+         self->offFlagMigration = true;
+      }
+
+     // space bubble
+     if(!strcmp(method->clazz->descriptor, "Lcom/google/ads/util/AdUtil;") && !strcmp(method->name, "a") && method->idx == 1156) {
+        self->offFlagMigration = true;
+     }
+     
+     // sudoku
+     if(!strcmp(method->clazz->descriptor, "Lcom/genina/ads/AdView$MyLocalThread;") && !strcmp(method->name, "run") && method->idx == 1289) {
+        self->offFlagMigration = true;
+        truntime = dvmGetRelativeTimeUsec();
+     } else if(!strcmp(method->clazz->descriptor, "Lcom/icenta/sudoku/ui/MobileSudoku$42;") && !strcmp(method->name, "run") && method->idx == 2996) {
+        self->offFlagMigration = true;
+        mruntime = dvmGetRelativeTimeUsec();
+     } else if(!strcmp(method->clazz->descriptor, "Lcom/icenta/sudoku/Puzzle;") && !strcmp(method->name, "solve") && method->idx == 2811) {
+        self->offFlagMigration = true;
+        psoltime = dvmGetRelativeTimeUsec();
+     } else if(!strcmp(method->clazz->descriptor, "Lcom/icenta/sudoku/Puzzle;") && !strcmp(method->name, "<init>") && method->idx == 2784) {
+        self->offFlagMigration = true;
+        pinittime = dvmGetRelativeTimeUsec();
+     }
+     
+     // chess
+     if(!strcmp(method->clazz->descriptor, "Lcom/google/android/chess/b;") && !strcmp(method->name, "h") && method->idx == 286) {
+        self->offFlagMigration = true;
+        chesstime = dvmGetRelativeTimeUsec();
+     }/* else if(!strcmp(method->clazz->descriptor, "Lcom/leagem/chesslive/gamelogic/c;") && !strcmp(method->name, "run") && method->idx == 7213) {
+        self->offFlagMigration = true;
+     }*/
+     
+     // mobialia chess
+     if(!strcmp(method->clazz->descriptor, "Lcom/alonsoruibal/chess/search/SearchEngine;") && !strcmp(method->name, "run") && method->idx == 918) {
+        self->offFlagMigration = true;
+        chesstime = dvmGetRelativeTimeUsec();
+     }
+     
+     // poker odds
+     /*if(!strcmp(method->clazz->descriptor, "Lcom/leslie/cjpokeroddscalculator/CJPokerOddsCalculator$3;") && !strcmp(method->name, "access$0") && method->idx == 61) {
+        self->offFlagMigration = true;
+        acctime = dvmGetRelativeTimeUsec();
+     } else*/ if(!strcmp(method->clazz->descriptor, "Lcom/leslie/cjpokeroddscalculator/CJPokerOddsCalculator$3;") && !strcmp(method->name, "poker_calculation") && method->idx == 73) {
+        self->offFlagMigration = true;
+        pcaltime = dvmGetRelativeTimeUsec();
+     }
+     
+     // ru metro
+     if(!strcmp(method->clazz->descriptor, "Lcom/mechsoft/ru/graph/Graph;") && !strcmp(method->name, "TheShortestPathByTime") && method->idx == 313) {
+        self->offFlagMigration = true;
+        timetime = dvmGetRelativeTimeUsec();
+     } else if(!strcmp(method->clazz->descriptor, "Lcom/mechsoft/ru/graph/Graph;") && !strcmp(method->name, "Dijkstra") && method->idx == 312) {
+        self->offFlagMigration = true;
+        dijtime = dvmGetRelativeTimeUsec();
+     } else if(!strcmp(method->clazz->descriptor, "Lcom/mechsoft/ru/graph/Graph;") && !strcmp(method->name, "TheShortestPathByTransfer") && method->idx == 314) {
+        self->offFlagMigration = true;
+        transtime = dvmGetRelativeTimeUsec();
+     }
+  }
+}
+
 
 /* store a long into an array of u4 */
 static inline void putLongToArray(u4* ptr, int idx, s8 val)
@@ -440,8 +554,6 @@ static inline bool checkForNullExportPC(Object* obj, u4* fp, const u2* pc)
 
 #ifdef WITH_OFFLOAD
 #define CHECK_FOR_MIGRATE() do {                                            \
-        if (self->offFlagMigration) {                                       \
-            EXPORT_PC();                                                    \
             u4 breakFrames = self->breakFrames;                             \
             self->offFlagMigration = false;                                 \
             offMigrateThread(self);                                         \
@@ -450,6 +562,7 @@ static inline bool checkForNullExportPC(Object* obj, u4* fp, const u2* pc)
             }                                                               \
             const StackSaveArea* saveArea = SAVEAREA_FROM_FP(self->interpSave.curFrame);\
             self->interpSave.method = curMethod = saveArea->method;         \
+            ALOGI("continue to run after perform migrate at check_for_migrate, method: %s.%s", curMethod->clazz->descriptor, curMethod->name);    \
             fp = (u4*) self->interpSave.curFrame;                           \
             pc = saveArea->xtra.currentPc;                                  \
             methodClassDex = curMethod->clazz->pDvmDex;                     \
@@ -457,9 +570,8 @@ static inline bool checkForNullExportPC(Object* obj, u4* fp, const u2* pc)
                 GOTO_exceptionThrown();                                     \
             }                                                               \
             FINISH(0);                                                      \
-        }                                                                   \
     } while(0)
-#define SCHEDULER_SAFE_POINT() offSchedulerSafePoint(self)
+#define SCHEDULER_SAFE_POINT() offSchedulerSafePoint(self, curMethod)
 #define CHECK_STACK_INTEGRITY_DO(x) do {                                    \
         u4 breakFrames = self->breakFrames;                                 \
         u4 migrationCounter = self->migrationCounter;                       \
@@ -497,8 +609,6 @@ static inline bool checkForNullExportPC(Object* obj, u4* fp, const u2* pc)
             EXPORT_PC();  /* need for precise GC */                         \
             dvmCheckSuspendPending(self);                                   \
         }                                                                   \
-        SCHEDULER_SAFE_POINT();                                             \
-        CHECK_FOR_MIGRATE();                                                \
     }
 
 /* File: c/opcommon.cpp */
@@ -1171,6 +1281,14 @@ void dvmInterpretPortable(Thread* self)
 #if defined(EASY_GDB)
     StackSaveArea* debugSaveArea = SAVEAREA_FROM_FP(self->interpSave.curFrame);
 #endif
+#if defined(WITH_OFFLOAD)
+    StackSaveArea* curSaveArea = SAVEAREA_FROM_FP(self->interpSave.curFrame);
+    if(!gDvm.isServer) {
+        curSaveArea->startTime = dvmGetRelativeTimeUsec();
+    } else {
+        curSaveArea->startTime = -1U;
+    }
+#endif
     DvmDex* methodClassDex;     // curMethod->clazz->pDvmDex
     JValue retval;
 
@@ -1185,7 +1303,6 @@ void dvmInterpretPortable(Thread* self)
     /* method call setup */
     const Method* methodToCall;
     bool methodCallRange;
-
     /* static computed goto table */
     DEFINE_GOTO_TABLE(handlerTable);
 
@@ -1220,7 +1337,29 @@ void dvmInterpretPortable(Thread* self)
         DUMP_REGS(curMethod, self->interpSave.curFrame, false);
     }
 #endif
-
+#if defined(WITH_OFFLOAD)
+    if(!gDvm.isServer) {
+        SCHEDULER_SAFE_POINT();
+        if (self->offFlagMigration) {
+            self->isMethodStart = true;
+            EXPORT_PC();
+            CHECK_FOR_MIGRATE();
+        }
+    }
+    if(!strcmp(curMethod->name, "icalculate") || !strcmp(curMethod->name, "calculate")) {
+    InterpSaveState* sst1 = &self->interpSave;
+  u4* fp1 = sst1->curFrame;
+   while(fp1 != NULL) {
+    const StackSaveArea* saveArea1 = SAVEAREA_FROM_FP(fp1);
+    Method* method1 = (Method*)saveArea1->method;
+    if(method1 != NULL) {
+        ALOGE("running method: %s.%s", method1->clazz->descriptor, method1->name);
+    }
+    fp1 = saveArea1->prevFrame;
+  }
+  }
+#endif 
+ 
     FINISH(0);                  /* fetch and execute first instruction */
 
 /*--- start of opcodes ---*/
@@ -3650,9 +3789,93 @@ GOTO_TARGET(returnFromMethod)
         ILOGV("> retval=0x%llx (leaving %s.%s %s)",
             retval.j, curMethod->clazz->descriptor, curMethod->name,
             curMethod->shorty);
-        //DUMP_REGS(curMethod, fp);
-
+        
         saveArea = SAVEAREA_FROM_FP(fp);
+        
+#if defined(WITH_OFFLOAD)
+        u8 end = dvmGetRelativeTimeUsec();
+        /*if(!gDvm.offDisabled && curMethod->clazz->pDvmDex->classLoader) {
+            // cjpoker
+            if(!strcmp(curMethod->clazz->descriptor, "Lcom/leslie/cjpokeroddscalculator/CJPokerOddsCalculator$3;") && !strcmp(curMethod->name, "access$0") && curMethod->idx == 61) {
+                if(acctime != -1U) {
+                    ALOGE("Lcom/leslie/cjpokeroddscalculator/CJPokerOddsCalculator$3; access$0 exetime: %llu", end - acctime);
+                }
+             } else if(!strcmp(curMethod->clazz->descriptor, "Lcom/leslie/cjpokeroddscalculator/CJPokerOddsCalculator$3;") && !strcmp(curMethod->name, "poker_calculation") && curMethod->idx == 73) {
+                if(pcaltime != -1U) {
+                    ALOGE("Lcom/leslie/cjpokeroddscalculator/CJPokerOddsCalculator$3; poker_calculation exetime: %llu", end - pcaltime);
+                }
+             }
+             
+             // metro
+             else if(!strcmp(curMethod->clazz->descriptor, "Lcom/mechsoft/ru/metro/MainActivity$20;") && !strcmp(curMethod->name, "run") && curMethod->idx == 440) {
+                if(acttime != -1U) {
+                    ALOGE("Lcom/mechsoft/ru/metro/MainActivity$20; run exetime: %llu", end - acttime);
+                }
+             } else if(!strcmp(curMethod->clazz->descriptor, "Lcom/mechsoft/ru/graph/Graph;") && !strcmp(curMethod->name, "TheShortestPathByTime") && curMethod->idx == 313) {
+                if(timetime != -1U) {
+                    ALOGE("Lcom/mechsoft/ru/graph/Graph; TheShortestPathByTime exetime: %llu", end - timetime);
+                }
+             } else if(!strcmp(curMethod->clazz->descriptor, "Lcom/mechsoft/ru/graph/Graph;") && !strcmp(curMethod->name, "Dijkstra") && curMethod->idx == 312) {
+                if(dijtime != -1U) {
+                    ALOGE("Lcom/mechsoft/ru/graph/Graph; Dijkstra exetime: %llu", end - dijtime);
+                }
+             } else if(!strcmp(curMethod->clazz->descriptor, "Lcom/mechsoft/ru/graph/Graph;") && !strcmp(curMethod->name, "TheShortestPathByTransfer") && curMethod->idx == 314) {
+                if(transtime != -1U) {
+                    ALOGE("Lcom/mechsoft/ru/graph/Graph; TheShortestPathByTransfer exetime: %llu", end - transtime);
+                }
+             }
+             
+             // chess
+             else if(!strcmp(curMethod->clazz->descriptor, "Lcom/google/android/chess/b;") && !strcmp(curMethod->name, "h") && curMethod->idx == 286) {
+                if(chesstime != -1U) {
+                    ALOGE("Lcom/google/android/chess/b; h exetime: %llu", end - chesstime);
+                }
+             }
+             
+             // sudoku
+             else if(!strcmp(curMethod->clazz->descriptor, "Lcom/genina/ads/AdView$MyLocalThread;") && !strcmp(curMethod->name, "run") && curMethod->idx == 1289) {
+                if(truntime != -1U) {
+                    ALOGE("Lcom/genina/ads/AdView$MyLocalThread; run exetime: %llu", end - truntime);
+                }
+             } else if(!strcmp(curMethod->clazz->descriptor, "Lcom/icenta/sudoku/ui/MobileSudoku$42;") && !strcmp(curMethod->name, "run") && curMethod->idx == 2996) {
+                if(mruntime != -1U) {
+                    ALOGE("Lcom/icenta/sudoku/ui/MobileSudoku$42; run exetime: %llu", end - mruntime);
+                }
+             } else if(!strcmp(curMethod->clazz->descriptor, "Lcom/icenta/sudoku/Puzzle;") && !strcmp(curMethod->name, "solve") && curMethod->idx == 2811) {
+                if(psoltime != -1U) {
+                    ALOGE("Lcom/icenta/sudoku/Puzzle; solve exetime: %llu", end - psoltime);
+                }
+             } else if(!strcmp(curMethod->clazz->descriptor, "Lcom/icenta/sudoku/Puzzle;") && !strcmp(curMethod->name, "<init>") && curMethod->idx == 2784) {
+                if(pinittime != -1U) {
+                    ALOGE("Lcom/icenta/sudoku/Puzzle; <init> exetime: %llu", end - pinittime);
+                }
+             }
+         }*/
+        if(!gDvm.offDisabled && end > saveArea->startTime && curMethod->clazz->pDvmDex->classLoader) {
+            u4 exepoint = 0;
+            if(gDvm.methodExePointMap->find(curMethod) != gDvm.methodExePointMap->end()) {
+                exepoint = (*gDvm.methodExePointMap)[curMethod];
+            }
+  std::stringstream converter;
+  converter << exepoint;
+  char* pointStr = strdup(converter.str().c_str());
+  converter.str("");
+  converter.clear();
+            char key[strlen(curMethod->clazz->descriptor) + strlen(curMethod->name) + strlen(pointStr) + 1];
+            strcpy(key, curMethod->clazz->descriptor);
+            strcat(key, curMethod->name);
+            strcat(key, pointStr);
+            if(gDvm.methodExeCountMap->find(key) == gDvm.methodExeCountMap->end()) {
+                (*gDvm.methodExeCountMap)[strdup(key)] = 0;
+            } else {
+                if((*gDvm.methodExeCountMap)[key] <= 8) {
+                // write out the result
+                    ALOGE("write out method execution: %s %s %d, point: %d, time: %llu", curMethod->clazz->descriptor, curMethod->name, curMethod->idx, exepoint, end - saveArea->startTime);
+                    (*gDvm.methodExeCountMap)[key] += 1;
+                }
+            }
+        }
+#endif
 
 #ifdef EASY_GDB
         debugSaveArea = saveArea;
@@ -3661,6 +3884,31 @@ GOTO_TARGET(returnFromMethod)
         /* back up to previous frame and see if we hit a break */
         fp = (u4*)saveArea->prevFrame;
         assert(fp != NULL);
+        
+#if defined(WITH_OFFLOAD) && defined(CHECK_FOR_MIGRATE)
+        /* if it has reach the end of the offloading method, we migrate it back */
+        if(gDvm.isServer) {
+            if(fp == self->offStackFpStop) {
+                if(INST_INST(inst) == OP_RETURN_VOID || INST_INST(inst) == OP_RETURN_VOID_BARRIER) {
+                    self->returnType = 'v';
+                } else if(INST_INST(inst) == OP_RETURN) {
+                    self->retReg = INST_AA(inst);
+                    self->returnType = 'i';
+                } else if(INST_INST(inst) == OP_RETURN_OBJECT) {
+                    self->retReg = INST_AA(inst);
+                    self->returnType = 'o';
+                } else {
+                    self->retReg = INST_AA(inst);
+                    self->returnType = 'w';
+                }
+                self->offFlagMigration = true;
+                ALOGE("migrate from server at the end of method, with return type: %d, retreg: %d", self->returnType, self->retReg);
+                /* Export pc on the old frame. */
+                saveArea->xtra.currentPc = pc;
+                CHECK_FOR_MIGRATE();
+            }
+        }
+#endif
 
         /* Handle any special subMode requirements */
         if (self->interpBreak.ctl.subMode != 0) {
@@ -3691,7 +3939,7 @@ GOTO_TARGET(returnFromMethod)
             curMethod->name, curMethod->shorty);
 
 #ifdef WITH_OFFLOAD
-        offStackFramePopped(self);
+//        offStackFramePopped(self);
 #endif
         /* use FINISH on the caller's invoke instruction */
         //u2 invokeInstr = INST_INST(FETCH(0));
@@ -3754,6 +4002,11 @@ GOTO_TARGET(exceptionThrown)
             PC_FP_TO_SELF();
             dvmReportExceptionThrow(self, exception);
         }
+        
+        // Modified by Yong to debug
+        if(gDvm.isServer) {
+          dvmDumpThread(self, false);
+        }
 
         /*
          * We need to unroll to the catch block or the nearest "break"
@@ -3772,6 +4025,20 @@ GOTO_TARGET(exceptionThrown)
          */
         catchRelPc = dvmFindCatchBlock(self, pc - curMethod->insns,
                     exception, false, (void**)(void*)&fp);
+
+#if defined(WITH_OFFLOAD) && defined(CHECK_FOR_MIGRATE)
+        /* if it has reach the end of the offloading method, we migrate it back */
+        //TODO: make it to be able to migrate only the arguments back and export the current register
+        if(catchRelPc < 0 && gDvm.isServer) {
+            self->offFlagMigration = true;
+            self->returnType = 'e';
+            dvmSetException(self, exception);
+            SAVEAREA_FROM_FP(fp)->xtra.currentPc = pc;
+            ALOGE("migrate from server at exception which cannot be caught");
+            // do not export pc because we might end up with unable to find the regvector
+            CHECK_FOR_MIGRATE();
+        }
+#endif
 
         /*
          * Restore the stack bounds after an overflow.  This isn't going to
@@ -3806,6 +4073,7 @@ GOTO_TARGET(exceptionThrown)
 #endif
             dvmSetException(self, exception);
             dvmReleaseTrackedAlloc(exception, self);
+
             GOTO_bail();
         }
 
@@ -3961,12 +4229,16 @@ GOTO_TARGET(invokeMethod, bool methodCallRange, const Method* _methodToCall,
               dvmIsNativeMethod(methodToCall) &&
               (~methodToCall->accessFlags & ACC_OFFLOADABLE)) {
             self->offFlagMigration = true;
+            ALOGE("migrate from server at native method");
+            EXPORT_PC();
             CHECK_FOR_MIGRATE();
             dvmAbort();
         } else if(gDvm.isServer && methodToCall == gDvm.offMethWriteImpl) {
             /* We allow writing to stdout/stderr on the server. */
             if (newFp[1] != 1 && newFp[1] != 2) {
                 self->offFlagMigration = true;
+                ALOGE("migrate from server at writing");
+                EXPORT_PC();
                 CHECK_FOR_MIGRATE();
                 dvmAbort();
             }
@@ -4013,6 +4285,13 @@ GOTO_TARGET(invokeMethod, bool methodCallRange, const Method* _methodToCall,
         newSaveArea->returnAddr = 0;
 #endif
         newSaveArea->method = methodToCall;
+#if defined(WITH_OFFLOAD)
+        if(!gDvm.isServer) {
+            newSaveArea->startTime = dvmGetRelativeTimeUsec();
+        } else {
+            newSaveArea->startTime = -1U;
+        }
+#endif
 
         if (self->interpBreak.ctl.subMode != 0) {
             /*
@@ -4042,8 +4321,59 @@ GOTO_TARGET(invokeMethod, bool methodCallRange, const Method* _methodToCall,
             ILOGD("> pc <-- %s.%s %s", curMethod->clazz->descriptor,
                 curMethod->name, curMethod->shorty);
             DUMP_REGS(curMethod, fp, true);         // show input args
+
+#if defined(WITH_OFFLOAD)        
+            if(!gDvm.isServer) {
+                SCHEDULER_SAFE_POINT();
+                if (self->offFlagMigration) {
+                    self->isMethodStart = true;
+                    EXPORT_PC();
+                    CHECK_FOR_MIGRATE();
+                }
+            }
+#endif            
+            
             FINISH(0);                              // jump to method start
         } else {
+#if defined(WITH_OFFLOAD)
+        // set the execution time for each method between these two break frame
+        if (!gDvm.offDisabled && !gDvm.isServer &&
+              ((~methodToCall->accessFlags & ACC_OFFLOADABLE) || methodToCall == gDvm.offMethWriteImpl)) {
+              ALOGE("execution of native method: %s.%s", methodToCall->clazz->descriptor, methodToCall->name);
+            u4* tempFp = fp;
+            u8 end = dvmGetRelativeTimeUsec();
+            while(tempFp != NULL && !dvmIsBreakFrame(tempFp)) {
+                StackSaveArea* tempArea = SAVEAREA_FROM_FP(tempFp);
+                u4 exepoint = 0;
+                if(end > tempArea->startTime && tempArea->method->clazz->pDvmDex->classLoader) {
+                    if(gDvm.methodExePointMap->find(tempArea->method) != gDvm.methodExePointMap->end()) {
+                        exepoint = (*gDvm.methodExePointMap)[curMethod];
+                    }
+                    // write out the result
+  std::stringstream converter;
+  converter << exepoint;
+  char* pointStr = strdup(converter.str().c_str());
+  converter.str("");
+  converter.clear();
+            char key[strlen(tempArea->method->clazz->descriptor) + strlen(tempArea->method->name) + strlen(pointStr) + 1];
+            strcpy(key, tempArea->method->clazz->descriptor);
+            strcat(key, tempArea->method->name);
+            strcat(key, pointStr);
+            if(gDvm.methodExeCountMap->find(key) == gDvm.methodExeCountMap->end()) {
+                (*gDvm.methodExeCountMap)[strdup(key)] = 0;
+            } else {
+                if((*gDvm.methodExeCountMap)[key] <= 8) {
+                // write out the result
+                    ALOGE("write out method execution: %s %s %d, point: %d, time: %llu", tempArea->method->clazz->descriptor, tempArea->method->name, tempArea->method->idx, exepoint, end - tempArea->startTime);
+                    (*gDvm.methodExeCountMap)[key] += 1;
+                }
+            }
+                }
+                tempFp = tempArea->prevFrame;
+            }
+        }
+#endif  
+        
             /* set this up for JNI locals, even if not a JNI native */
             newSaveArea->xtra.localRefCookie = self->jniLocalRefTable.segmentState.all;
 
@@ -4073,8 +4403,22 @@ GOTO_TARGET(invokeMethod, bool methodCallRange, const Method* _methodToCall,
             dvmPopJniLocals(self, newSaveArea);
             self->interpSave.curFrame = fp;
 #ifdef WITH_OFFLOAD
-            offStackFramePopped(self);
+//            offStackFramePopped(self);
 #endif
+#if defined(WITH_OFFLOAD)
+        // set the execution time for each method between these two break frame
+        if (!gDvm.offDisabled && !gDvm.isServer &&
+              ((~methodToCall->accessFlags & ACC_OFFLOADABLE) || methodToCall == gDvm.offMethWriteImpl)) {
+            u4* tempFp = fp;
+            u8 start = dvmGetRelativeTimeUsec();
+            while(tempFp != NULL && !dvmIsBreakFrame(tempFp)) {
+                StackSaveArea* tempArea = SAVEAREA_FROM_FP(tempFp);
+                tempArea->startTime = start;
+                (*gDvm.methodExePointMap)[tempArea->method] = tempArea->xtra.currentPc - tempArea->method->insns;
+                tempFp = tempArea->prevFrame;
+            }
+        }
+#endif  
 
             /*
              * If the native code threw an exception, or interpreted code

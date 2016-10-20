@@ -899,16 +899,16 @@ static Thread* allocThread(int interpStackSize)
     thread->offFlagMigration = false;
     thread->offFlagDeath = false;
     thread->offTrimSignaled = false;
-    thread->offSyncStackStop = NULL;
+//    thread->offSyncStackStop = NULL;
     thread->offWriteBuffer = auxFifoCreate();
     thread->offReadBuffer = auxFifoCreate();
-    thread->offTimeCounter = 0;
+//    thread->offTimeCounter = 0;
     pthread_mutex_init(&thread->offBufferLock, NULL);
     pthread_cond_init(&thread->offBufferCond, NULL);
     thread->offCorkLevel = 0;
     thread->offProtection = 0;
 
-    offSchedulerUnsafePoint(thread);
+//    offSchedulerUnsafePoint(thread);
 
     memset(thread->offLockList, 0, sizeof(thread->offLockList));
 #endif

@@ -429,6 +429,9 @@ static void *gcDaemonThread(void* arg)
          * condition before proceeding.
          */
         if (!gDvm.gcHeap->gcRunning) {
+#ifdef WITH_OFFLOAD
+          if(!gDvm.conGcDisabled) {
+#endif        
             dvmChangeStatus(NULL, THREAD_RUNNING);
             if (trim) {
                 trimHeaps();
@@ -438,6 +441,9 @@ static void *gcDaemonThread(void* arg)
                 gHs->gcThreadTrimNeeded = true;
             }
             dvmChangeStatus(NULL, THREAD_VMWAIT);
+#ifdef WITH_OFFLOAD
+          }
+#endif
         }
         dvmUnlockHeap();
     }

@@ -1,13 +1,13 @@
 struct Thread;
 struct FifoBuffer;
 
-void offPushAllStacks(struct FifoBuffer* fb);
+void offPushAllStacks(struct FifoBuffer* sfb, struct FifoBuffer* fb);
 
-void offPullAllStacks(struct FifoBuffer* fb);
+void offPullAllStacks(struct FifoBuffer* sfb);
 
-void offPushStack(struct FifoBuffer* fb, struct Thread* thread);
+void offPushStack(struct FifoBuffer* sfb, struct FifoBuffer* fb, struct Thread* thread);
 
-struct Thread* offPullStack(struct FifoBuffer* fb, u4 tid);
+struct Thread* offPullStack(struct FifoBuffer* sfb, u4 tid);
 
 #ifdef DEBUG
 bool offCheckBreakFrames();
